@@ -1,0 +1,38 @@
+Tools for Builders on Tangled
+by Tangled
+
+The Challenge
+Tangled is a code platform built natively on the AT Protocol. The API is open, and there are no (rate) limits. That makes it the most open canvas we know of for the next thing happening in software: autonomous agents that review code, co-develop features and ship pull requests alongside humans. We're bringing this challenge to Junction because the participants here are exactly the kind of early founders and builders who can prove what an open, protocol-native developer platform unlocks when agents are first-class citizens. Help us shape what open-source collaboration looks like next.
+
+Build an integration with Tangled, over the AT Protocol, that enhances the open-source experience. One interesting direction we see is agentic: a fully autonomous code-review agent that listens to the firehose and responds to incoming pull requests, or an agent that co-develops features alongside you on your own repo and submits its own PRs. You could also go playful: a previous community project built a leaderboard tracking who pushes the most code to Tangled and ended up sparking a (glorious) push arms race. The challenge is intentionally open-ended; come with your own idea and let AT Protocol primitives do the heavy lifting.
+
+Insight
+We're most excited by novel integrations for Tangled. One such avenue could be agents that operate autonomously in the code forge: think incoming-PR review off the firehose, or a co-developer agent that opens its own pull requests on your repo. The crux is having an integration that leans on AT Protocol primitives for state and ephemerality instead of reinventing them.
+
+Resources
+During the event, participants will build with Tangled, our developer platform built on the AT Protocol. Tangled builds off a unified ATProto API: your integration talks to the platform directly through the protocol itself, the same way Tangled does. Every participant gets full open access by default, because the platform itself is open and extensible.
+
+Tangled's built-in CI is included for free, so you can create automated workflows from day one. Documentation lives at docs.tangled.org and is friendly to paste into Claude or any LLM to get moving quickly. Lewis, one of our founding engineers, will be on-site throughout the hackathon to help with anything from protocol questions to architecture feedback.
+
+Company Info
+
+Tangled
+Website: https://tangled.org/
+
+Judging Criteria
+How to win the challenge
+(99%)
+We'll be looking for projects that are original and inspiring! Ideas that lean into AT Protocol primitives rather than reinventing infrastructure around them.
+
+Side Challenge
+(1%)
+As a fun side track, the team that pushes the most code to Tangled during the event will get a special shout-out.
+
+Prizes
+1st team
+1024 €
+
+2nd team
+512 €
+
+3rd team

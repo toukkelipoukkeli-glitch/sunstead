@@ -29,9 +29,18 @@ Read in this order:
 5. [ideas/tangled-evidence-radar/TANGLED_IDEAS.md](ideas/tangled-evidence-radar/TANGLED_IDEAS.md)
 6. [ideas/tangled-evidence-radar/TANGLED_ROADMAP.md](ideas/tangled-evidence-radar/TANGLED_ROADMAP.md)
 7. [ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md](ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md)
-8. [ideas/tangled-evidence-radar/PITCH.md](ideas/tangled-evidence-radar/PITCH.md)
-9. [ideas/tangled-evidence-radar/LOG.md](ideas/tangled-evidence-radar/LOG.md)
-10. [CHECKLIST.md](CHECKLIST.md)
+8. [TANGLED_HIGH_LEVEL_THESIS.md](TANGLED_HIGH_LEVEL_THESIS.md)
+9. [TANGLED_AI_PR_TRUST.md](TANGLED_AI_PR_TRUST.md)
+10. [TANGLED_ARCHETYPE_CONVERGENCE.md](TANGLED_ARCHETYPE_CONVERGENCE.md)
+11. [TOP_IDEAS_PITCH.md](TOP_IDEAS_PITCH.md)
+12. [ideas/tangled-evidence-radar/PITCH.md](ideas/tangled-evidence-radar/PITCH.md)
+13. [ideas/tangled-evidence-radar/LOG.md](ideas/tangled-evidence-radar/LOG.md)
+14. [evidence-radar-atproto/README.md](evidence-radar-atproto/README.md)
+15. [evidence-radar-atproto/DEEP_THESIS.md](evidence-radar-atproto/DEEP_THESIS.md)
+16. [autonomous-agents-world/README.md](autonomous-agents-world/README.md)
+17. [autonomous-agents-world/DEEP_THESIS.md](autonomous-agents-world/DEEP_THESIS.md)
+18. [investigations/tangled_landscape_2026_06_24/README.md](investigations/tangled_landscape_2026_06_24/README.md)
+19. [CHECKLIST.md](CHECKLIST.md)
 
 After the event:
 

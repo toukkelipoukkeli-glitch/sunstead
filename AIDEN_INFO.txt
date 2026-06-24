@@ -1,0 +1,105 @@
+
+Back To Home
+
+Hacker Dashboard
+
+Sunstead Hack
+Sunstead Hack
+General
+
+Dashboard
+
+Challenges
+
+Team
+
+Ticket
+
+Guide
+
+Partners
+
+Hackerpacks
+During Hackathon
+
+Project Submission
+Henri Palonen
+henri.j.palonen@gmail.com
+
+All Challenges
+/
+The Autonomous Data Operator
+Status: Submissions are open
+T -53:43:31
+The Autonomous Data Operator
+by Aiven
+
+The Challenge
+Build a multi-agent system that natively controls, streams, or queries open-source data infrastructure using the Aiven Model Context Protocol (MCP).
+
+The Vision
+Traditional applications require thousands of lines of backend boilerplate code just to let an LLM talk to a database or a message queue. The emergence of the Model Context Protocol (MCP) completely rewrites this playbook.
+
+By using the Aiven MCP Server, your AI agents gain direct, native access to the data layer. They can provision PostgreSQL databases, spin up Apache Kafka streaming clusters, run raw queries, and trigger event pipelines — all through natural language. We want to see how powerful agent swarms can dynamically orchestrate enterprise data systems when handed the keys to the platform.
+
+Your Challenge
+We challenge you to build an agentic system where autonomous workflows interact with and manage data infrastructure via the Aiven MCP. Instead of writing traditional backend APIs, your agents can dynamically orchestrate, stream, and query the underlying infrastructure directly via MCP tool calls.
+
+Bring your own hackathon idea — whether it's an AI-driven game, an automated DevOps assistant, or a live analytics tool — and use Aiven services as the baseline for your agents' communication, memory storage, and state management.
+
+Insight
+What the Aiven MCP Can Do (Your Arsenal)
+You can connect the Aiven MCP URL straight into tools like Cursor, Claude Code, or LangChain to give your agents immediate access to these core scopes:
+
+Core Infrastructure Management: Let your agents spin up, scale, configure, or delete actual cloud data services on the fly based on user requirements.
+
+PostgreSQL: Give your agents direct access to execute SQL queries and run similarity searches (pgvector extension), enabling them to read and write their own long-term memories and data artifacts.
+
+Apache Kafka: Enable agents to publish messages and listen to live event streams in real time, unlocking true agent-to-agent collaboration via a pub/sub architecture.
+
+OpenSearch (not 100%): Provide your swarm with ultra-fast context caching and advanced deep search capabilities to process complex workloads.
+
+Need Inspiration?
+Don't have an idea yet? Here are three directions you can take this challenge:
+
+1. The "No-Backend" App Swarm
+Build an interactive application (e.g., a multi-agent research agency or a live AI simulation) where agents bypass standard middleware and pass tasks to each other entirely via Kafka event streams and store history in PostgreSQL using the Aiven MCP.
+
+2. The Self-Driving Data Engineer
+Create an autonomous DevOps or DataOps assistant. A user types, "I need a resilient real-time streaming pipeline for an e-commerce store," and your agent uses MCP tools to automatically provision and configure the necessary database and Kafka clusters.
+
+3. The Intelligent Data Detective
+Build an AI agent that monitors system metrics or live data streams. When it detects an anomaly or a spike in traffic, it uses the Aiven MCP to dynamically execute analytical database queries or scale up infrastructure automatically.
+
+Resources
+Resources & Support
+Platform Access: Every team will receive cloud credits to deploy managed services on the Aiven platform. To claim them, just create a new account on Aiven.
+The Bridge: Complete documentation and access to the Aiven MCP Server (https://aiven.io/docs/tools/mcp-server).
+On-Site Mentors: Our expert onsite is happy to assist you with any questions you might have.
+Company Info
+
+Aiven
+Website: https://aiven.io/
+
+Judging Criteria
+Depth of MCP Integration
+(34%)
+How effectively did your agents leverage Aiven MCP tools to achieve their goals?
+
+Workflow Autonomy
+(33%)
+Did the system successfully abstract away traditional manual backend coding tasks?
+
+Creativity & Impact
+(33%)
+How original, useful, or incredibly cool is your overall hackathon project?
+
+Prizes
+1st team
+1000 € + 30K in Aiven credits
+
+2nd team
+750 € + 30K in Aiven credits
+
+3rd team
+$30K in Aiven credits

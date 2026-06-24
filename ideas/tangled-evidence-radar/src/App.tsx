@@ -1,20 +1,26 @@
 import {
   Activity,
   AlertTriangle,
+  BadgeCheck,
   CheckCircle2,
+  ChevronRight,
   Clock3,
+  Database,
   ExternalLink,
+  FileCode2,
   Fingerprint,
   GitBranch,
   GitPullRequestArrow,
   MessageSquare,
+  Network,
   RadioTower,
   Search,
+  Send,
   Server,
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { bucketLabels, repo, type Bucket, type EvidenceKind, type WorkItem, workItems } from "./data";
 
 const bucketOrder: Bucket[] = ["review", "context", "batch"];
@@ -41,6 +47,14 @@ function App() {
 
   const reviewCount = workItems.filter((item) => item.bucket === "review").length;
   const evidenceTotal = selected.evidence.reduce((sum, item) => sum + Math.max(item.weight, 0), 0);
+  const protocolRefs = selected.evidence.filter((item) => item.value.includes("://") || item.value.startsWith("did:")).length;
+  const topEvidence = selected.evidence.slice(0, 4);
+  const positiveEvidence = selected.evidence.filter((item) => item.weight > 0).length;
+
+  function selectBucket(bucket: Bucket) {
+    setActiveBucket(bucket);
+    setSelectedId(workItems.find((item) => item.bucket === bucket)?.id ?? workItems[0].id);
+  }
 
   return (
     <main className="app-shell">
@@ -49,6 +63,10 @@ function App() {
           <div>
             <p className="eyebrow">Tangled Evidence Radar</p>
             <h1>{repo.name}</h1>
+          </div>
+          <div className="status-cluster" aria-label="Demo status">
+            <span className="live-pill"><Database size={14} /> Seeded records</span>
+            <span className="live-pill ready"><BadgeCheck size={14} /> Pitch-ready flow</span>
           </div>
           <div className="repo-strip" aria-label="Repository context">
             <span><Fingerprint size={14} />{repo.did}</span>
@@ -70,6 +88,10 @@ function App() {
             <span className="metric-label">Top evidence</span>
             <strong>{evidenceTotal}</strong>
           </div>
+          <div className="metric">
+            <span className="metric-label">Protocol refs</span>
+            <strong>{protocolRefs}</strong>
+          </div>
         </section>
 
         <section className="protocol-proof" aria-label="Protocol proof">
@@ -87,6 +109,19 @@ function App() {
           </div>
         </section>
 
+        <section className="decision-banner" aria-label="Current decision">
+          <div className="decision-copy">
+            <span className="eyebrow">Current decision</span>
+            <strong>{selected.status}: {selected.title}</strong>
+            <p>{selected.reason}</p>
+          </div>
+          <div className="decision-proof">
+            <span>{positiveEvidence} positive signals</span>
+            <ChevronRight size={18} />
+            <span>{selected.score} priority score</span>
+          </div>
+        </section>
+
         <div className="main-grid">
           <section className="queue-pane" aria-label="Work queue">
             <div className="toolbar">
@@ -96,9 +131,10 @@ function App() {
                     key={bucket}
                     className={bucket === activeBucket ? "active" : ""}
                     type="button"
-                    onClick={() => setActiveBucket(bucket)}
+                    onClick={() => selectBucket(bucket)}
                   >
-                    {bucketLabels[bucket]}
+                    <span>{bucketLabels[bucket]}</span>
+                    <strong>{workItems.filter((item) => item.bucket === bucket).length}</strong>
                   </button>
                 ))}
               </div>
@@ -138,6 +174,18 @@ function App() {
               <span>{selected.reason}</span>
             </div>
 
+            <div className="evidence-chips" aria-label="Evidence summary">
+              {topEvidence.map((evidence) => {
+                const Icon = kindIcons[evidence.kind];
+                return (
+                  <div className="evidence-chip" key={`${selected.id}-${evidence.kind}`}>
+                    <Icon size={16} />
+                    <span>{evidence.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+
             <section className="evidence-timeline" aria-label="Evidence timeline">
               {selected.evidence.map((evidence, index) => {
                 const Icon = kindIcons[evidence.kind];
@@ -160,28 +208,40 @@ function App() {
               })}
             </section>
 
+            <div className="lower-grid">
+              <section className="decision-card" aria-label="Decision packet">
+                <div className="panel-heading">
+                  <Send size={16} />
+                  <span>Decision packet</span>
+                </div>
+                <p>{selected.action}</p>
+                <code>{selected.evidence[0]?.value}</code>
+              </section>
+
+              <section className="files-panel" aria-label="Touched files">
+                <div className="panel-heading">
+                  <FileCode2 size={16} />
+                  <span>Touched files</span>
+                </div>
+                <div className="file-list">
+                  {selected.files.map((file) => (
+                    <code key={file}>{file}</code>
+                  ))}
+                </div>
+              </section>
+            </div>
+
             <div className="action-row">
               <button className="primary-action" type="button">
                 <CheckCircle2 size={18} />
                 {selected.action}
               </button>
               <a className="secondary-action" href="https://tangled.org" target="_blank" rel="noreferrer">
-                <ExternalLink size={18} />
+                <Network size={18} />
                 Open Tangled
+                <ExternalLink size={15} />
               </a>
             </div>
-
-            <section className="files-panel" aria-label="Touched files">
-              <div className="panel-heading">
-                <GitBranch size={16} />
-                <span>Touched files</span>
-              </div>
-              <div className="file-list">
-                {selected.files.map((file) => (
-                  <code key={file}>{file}</code>
-                ))}
-              </div>
-            </section>
           </section>
         </div>
       </section>
@@ -199,10 +259,14 @@ function WorkItemButton({ item, selected, onSelect }: { item: WorkItem; selected
         <Icon size={17} />
       </span>
       <span className="item-copy">
+        <span className="item-meta">{item.type} · {item.author}</span>
         <strong>{item.title}</strong>
         <span>{item.reason}</span>
       </span>
-      <span className="item-score">{item.score}</span>
+      <span className="item-score">
+        <small>Score</small>
+        {item.score}
+      </span>
     </button>
   );
 }
@@ -212,9 +276,10 @@ function ScoreDial({ score }: { score: number }) {
   const angle = `${Math.round((clamped / 110) * 360)}deg`;
 
   return (
-    <div className="score-dial" style={{ "--angle": angle } as React.CSSProperties}>
+    <div className="score-dial" style={{ "--angle": angle } as CSSProperties}>
       <RadioTower size={16} />
       <strong>{score}</strong>
+      <span>priority</span>
     </div>
   );
 }

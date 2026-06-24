@@ -4,15 +4,20 @@ Use this for the 4-minute Tangled finalist pitch.
 
 ## One-Liner
 
-Tangled Evidence Radar gives maintainers one prioritized review queue and shows
-the portable protocol evidence behind every recommendation.
+Evidence Radar turns Tangled's protocol records into auditable maintainer
+decisions.
+
+Shorter thesis:
+
+> Git preserves what changed. Tangled can preserve why maintainers trust,
+> reject, fast-track, or block a change.
 
 ## Four-Minute Flow
 
 ### 0:00-0:25 — Problem
 
-Open-source maintainers do not just need more notifications. They need to know
-which work item deserves attention next, and why.
+Open-source maintainers do not just need more notifications. They need evidence
+for the next decision.
 
 Most forges trap the evidence behind that decision inside one platform: identity,
 trust, comments, PR history, CI state, and repo context are all platform exhaust.
@@ -22,8 +27,8 @@ trust, comments, PR history, CI state, and repo context are all platform exhaust
 Tangled changes the shape of the problem. Handles, DIDs, repo DIDs, records,
 vouches, comments, and spindle state can become portable evidence.
 
-Evidence Radar uses that protocol data to turn a maintainer inbox into an
-explainable decision surface.
+Evidence Radar uses that protocol data as Project Memory for Tangled: maintainer
+judgment with receipts.
 
 ### 0:50-2:35 — Demo
 
@@ -45,8 +50,9 @@ explainable decision surface.
 
 ### 2:35-3:30 — Why It Wins
 
-This is not a generic PR dashboard. If you remove Tangled primitives, the product
-gets worse:
+This is not a generic PR dashboard. The ranking is not the invention; the
+invention is making maintainer judgment replayable. If you remove Tangled
+primitives, the product gets worse:
 
 - without DIDs, identity is less portable
 - without vouches, trust does not change the action
@@ -98,7 +104,8 @@ Ask these before adding features:
 3. Should the final demo use a real Tangled repo or seeded records with deep
    links?
 4. Are vouch/denounce records a strong judging signal for Tangled?
-5. Which phrase lands better: "portable evidence" or "protocol-backed review"?
+5. Which phrase lands better: "portable maintainer judgment", "Project Memory
+   for Tangled", or "protocol-backed review"?
 
 ## Cut List
 
