@@ -10,13 +10,14 @@
 
 ## One-sentence pitch
 
-> **When your Lovable app blows up, an agent graduates its data plane from
-> Supabase/Lovable Cloud to Aiven — schema, data, realtime behavior, validation,
-> cutover plan, and receipts — then stays in the repo as an always-on "CTO" agent
-> that watches the app and tells you what to do next.**
+> **When your Lovable app blows up, an agent graduates it off Supabase/Lovable Cloud onto
+> Aiven — it migrates the schema + data, rewrites realtime onto Aiven Kafka, and *redeploys
+> the app's backend glue as an Aiven App running next to the data* — so the app ends up
+> 100% on Aiven, zero Supabase — then stays in the repo as an always-on "CTO" agent that
+> watches the app and tells you what to do next.**
 
-Backup framing if you only get one breath: *"Lovable builds the app, Aiven runs the data plane — and an
-agent does the migration, compatibility surgery, and next-step thinking in between."*
+Backup framing if you only get one breath: *"Lovable builds the app, Aiven runs it — an agent does
+the migration, deletes the Supabase dependency, and keeps thinking about what's next."*
 
 ---
 
@@ -49,9 +50,13 @@ the business side *cannot* do and is terrified to get wrong.
 - **migrates** schema + representative data + extensions (pgvector, etc.) using the right
   migration tools, with MCP as the control plane and proof layer,
 - **rewrites one behavior** in the demo — Supabase Realtime → Aiven Kafka outbox/event stream,
-- **flags what Aiven should not pretend to replace** — Auth, Storage, complex Edge Functions —
-  and generates the adapter plan,
-- **rewires** the app where safe — swaps env/config, generates backend adapter/code-diff notes,
+- **deploys the backend glue as an Aiven App via MCP** — the small API/worker that used to be a
+  Supabase Edge Function now runs *next to* the Aiven Postgres, so the app talks to Aiven only and
+  **Supabase is removed entirely** (deployed live, not just planned),
+- **flags the genuinely hard replacements honestly** — Auth and Storage — as the *same* Aiven App
+  pattern (deploy GoTrue / an object-store shim next to the data), built live if time allows,
+  named as v2 if not,
+- **rewires** the app — swaps env/config to point at the Aiven App + Postgres,
 - **verifies** the cutover (row counts match, app boots, queries pass),
 - records every step as **MCP receipts** in Aiven Postgres and Kafka,
 - and hands back a **before/after cost comparison** — "you were paying $X, this is $Y on
@@ -75,16 +80,35 @@ That distinction is the product.
 | Postgres tables, indexes, constraints | Direct migration to Aiven Postgres | Apply schema and migrate sample rows |
 | pgvector / extensions | Check and enable if available | Show extension check if stable |
 | RLS policies | Analyze, but flag auth-role dependency | Show as `needs auth adapter` |
-| Supabase Auth | Not replaced by Aiven | Generate auth adapter plan |
-| Supabase Storage | Not replaced by Aiven Postgres | Route to object store + metadata plan |
+| Supabase Auth | GoTrue/Keycloak as an Aiven App | Deploy live if time allows, else v2 (same pattern) |
+| Supabase Storage | Object-store shim as Aiven App + external S3 | v2 — storage needs durable backing |
 | Supabase Realtime | Rewrite to Aiven Kafka outbox/event stream | Make this the flashy demo beat |
-| Edge Functions / RPC | Convert to worker/API plan | Generate a stub diff or plan |
+| Edge Functions / RPC | **Redeploy as an Aiven App next to the data** | **Deploy live via MCP — this is what deletes Supabase** |
 | Supabase client calls | Generate backend adapter/code diff | Show one small diff |
 
 MCP should **not** be the bulk data pipe. For real migrations, the agent should orchestrate
 the right tools (`aiven-db-migrate`, `pg_dump`/`pg_restore`, `pgloader`, Debezium/Kafka
 Connect, source exports). MCP is best for provisioning, inspection, schema/metadata writes,
-Kafka topics/events, validation reads, logs/metrics, and receipts.
+Kafka topics/events, validation reads, logs/metrics, receipts — **and deploying the replacement
+backend as an Aiven App.**
+
+### Decision: actually deploy, not just plan — *delete Supabase entirely* ⭐
+
+We commit to the bigger swing: the agent doesn't hand the founder an adapter *plan*, it **deploys
+the replacement live as an Aiven App** through the Aiven MCP. Why this is the whole point: **Aiven's
+own official Lovable integration today still keeps Supabase in the loop** — it runs a *Supabase Edge
+Function as middleware* in front of Aiven Postgres (`Lovable → Supabase Edge Fn → Aiven`). Our agent
+removes that dependency: it redeploys that glue as an **Aiven App** (a container runtime that runs
+*next to* your Aiven data, launched April 2026, **creatable over MCP**), so the finished app is
+`Lovable UI → Aiven App → Aiven Postgres/Kafka` — **100% Aiven, zero Supabase**. We're not just
+using Aiven's stack; we're one-upping their own current integration, live, on stage.
+
+**Honest scope:** the buildable, reliable hero is **one** stateless Aiven App — the API/glue that
+replaced the Supabase Edge Function. Auth (GoTrue) and Storage are the *same* Aiven App pattern;
+deploy them live if time allows, otherwise name them v2 — but the Supabase-deletion is real, not a
+slide. **Prerequisite: Aiven Apps is limited-availability — we need access** (ask Daniil / Julie,
+who hand out exactly this), and it's a *stateless* runtime, so the glue App points at Aiven Postgres
+for state.
 
 ### 2. "Aiven is your CTO" (the expansion that makes it stick)
 
@@ -110,8 +134,8 @@ through the Aiven Context / "context-maxing" lens.
 
 - **MCP depth (34):** the migration is *real agentic MCP work* — the agent uses the **Aiven
   MCP** to provision/verify Postgres and Kafka, apply target schema, write receipts, produce
-  migration events, validate rows, and inspect service state. Not a cosmetic call — MCP is the
-  migration control plane.
+  migration events, validate rows, inspect service state, **and deploy the replacement backend as
+  an Aiven App**. Not a cosmetic call — MCP is the migration control plane *and* the deploy plane.
 - **Workflow autonomy (33):** end-to-end with a human only at "go." Introspect → provision →
   classify behavior → migrate → rewrite/flag unsupported behavior → verify → report, then the
   CTO agent runs continuously. Zero infra skill required from the user.
@@ -192,12 +216,15 @@ one sentence.
 3. **The behavior rewrite beat:** the UI shows `Supabase Realtime channel -> Aiven Kafka
    outbox`. The agent creates the Kafka topic through Aiven MCP, emits a test event, reads it
    back, and generates the adapter note.
-4. **The verify beat:** row counts match before/after; the app boots against Aiven-backed
-   data; a query returns the same result; blockers are honest (`Auth adapter required`,
-   `Storage externalization required`). *"That's the data plane on real Aiven, with the app
-   compatibility plan right next to it."*
-5. **The cost card:** $X on Supabase → $Y on Aiven, savings highlighted.
-6. **The CTO beat:** the agent posts its first proactive recommendation ("you're at 80%
+4. **The delete-Supabase beat (the hero):** the agent **deploys an Aiven App via MCP** — the glue
+   that replaced the Supabase Edge Function — and the app now runs `Lovable UI → Aiven App → Aiven
+   Postgres/Kafka`. *"Supabase is gone. This is live, on real Aiven, deployed by the agent just
+   now — Aiven's own Lovable integration still routes through Supabase; ours doesn't."*
+5. **The verify beat:** row counts match before/after; the app boots against Aiven-backed
+   data; a query returns the same result; remaining blockers are honest (`Auth: deployable as
+   Aiven App / v2`, `Storage: external S3 / v2`). *"Real where it's real, honest where it isn't."*
+6. **The cost card:** $X on Supabase → $Y on Aiven, savings highlighted.
+7. **The CTO beat:** the agent posts its first proactive recommendation ("you're at 80%
    connections — here's the move"). *"And it doesn't leave — it's now watching the app for
    you."*
 
@@ -208,6 +235,10 @@ the network is flaky on stage.
 
 ## Open questions / to figure out before building
 
+- **Aiven Apps access (blocking — we committed to live deploy):** Aiven Apps is *limited
+  availability*. Get our project allow-listed **now** — Daniil / Julie hand out exactly this — and
+  prove the deploy path end-to-end (build container from repo → run → reachable → hits Aiven
+  Postgres) *before* the demo. If access slips, fallback is a recorded deploy + the plan output.
 - **Lovable export surface:** what do we actually get from a Lovable project — repo access,
   the Supabase project directly, or both? Migration plan depends on this. (Check Lovable's
   GitHub sync + the Supabase project's direct Postgres connection.)
