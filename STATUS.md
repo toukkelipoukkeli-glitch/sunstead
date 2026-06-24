@@ -26,6 +26,11 @@ workflows on Aiven infra via the **Aiven MCP**.
 
 ## The demo app: PulseWall
 
+✅ **Built & runs** — Vite + React + Supabase app in [demo/pulsewall/](demo/pulsewall/) (clean
+production build, UI renders). Schema in `supabase/migrations/0001_init.sql` (matches the seed),
+embedding edge function in `supabase/functions/embed/`. Setup steps in its README. Still TODO:
+point it at a real Supabase project, deploy the edge function, run the seed.
+
 A real-time hype/reaction wall for a live event (festival / launch / stream). Attendees post
 short messages + a photo; the wall, live reaction counts, and a leaderboard update in real
 time on a big screen; "find similar hype" semantic search. Viral by nature ("it blew up, the
