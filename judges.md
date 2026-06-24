@@ -43,6 +43,11 @@ traffic, its bill — and turns that context into the right Aiven stack and a li
 next-best actions. The Aiven MCP isn't a checkbox: its output is the connection string the migrated
 app actually runs on."*
 
+**The one-up (he'll respect that we read the stack):** *"Your own Lovable integration still keeps
+Supabase in the loop as the edge-function middleware. Our agent removes Supabase entirely — moves
+the data with `aiven-db-migrate` and redeploys the glue as an **Aiven App** next to the DB. 100%
+Aiven, and both steps are MCP calls."*
+
 ---
 
 ## Daniil Freidin — Junior Startup Program Manager (Aiven for Startups)
