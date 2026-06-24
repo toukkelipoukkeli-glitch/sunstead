@@ -48,12 +48,14 @@ no fragile over-reach.
 
 ## Open questions / blockers (help wanted)
 
-- **🚧 Lovable export surface (do this first).** What do we actually get from a Lovable
-  project — repo access, the Supabase project directly, or both? The whole migrator points at
-  this. Need to confirm before building.
+- **✅ Lovable export surface — resolved.** See [demo/lovable-export-checklist.md](demo/lovable-export-checklist.md).
+  Build PulseWall on **your own Supabase project, NOT Lovable Cloud** (Lovable Cloud gives no
+  direct DB URL / service-role key → the migrator can't reach it). Then we get the connection
+  string, service-role key, SQL editor, and a GitHub-synced repo to scan. Cost story confirmed:
+  Lovable Cloud bills jump 3–5× from 10k→50k users.
+- **Seed script ready:** [demo/pulsewall-seed.sql](demo/pulsewall-seed.sql) (~5k posts / ~50k reactions).
 - **🚧 Aiven Apps access.** Aiven Apps is *limited availability* + stateless. The "deploy a
   live Aiven App" hero beat depends on us having access — **ask Daniil / Julie on site.**
-- **Seed plan.** ~5k posts + ~50k reactions via SQL so row counts + cost story are dramatic.
 - **CTO agent scope.** For the hackathon, ship 1–2 real recommendations off live Aiven
   metrics — concrete, not a mockup.
 
