@@ -7,8 +7,8 @@ Quick orientation. Full spec in [idea.md](idea.md); judge profiles + talking poi
 
 **Lovable → Aiven behavior migrator + "Aiven, your CTO" agent.** When a vibe-coded Lovable
 app blows up, an agent graduates its data plane off Supabase onto Aiven — migrates the data,
-**rewrites realtime behavior to Aiven Kafka**, **deploys the replacement backend glue as a live
-Aiven App so the app ends up 100% Aiven / zero Supabase**, verifies the cutover, and then stays
+**rewrites realtime behavior to Aiven Kafka**, and rewires the app onto Aiven's data plane so
+Supabase is deleted from the stack, verifies the cutover, and then stays
 on as a CTO agent that watches the app and says what to do next. Aiven challenge = agentic
 workflows on Aiven infra via the **Aiven MCP**.
 
@@ -16,9 +16,12 @@ workflows on Aiven infra via the **Aiven MCP**.
 
 - **Behavior migration, not just data migration.** The agent builds a *behavior graph* and
   classifies every Supabase feature: direct-migrate / rewrite / adapter / external / flag.
-- **Actually deploy, don't just plan.** We deploy the rewritten glue as an **Aiven App** via
-  MCP → fully removes Supabase. This also one-ups Aiven's *own* Lovable integration (theirs
-  still routes through a Supabase Edge Function as middleware).
+- **Delete Supabase by moving the data plane — not by hosting on Aiven.** ⚠️ UPDATED ~00:30:
+  **Aiven Apps deploy is LA and our account isn't enabled** (verified live via MCP). So the rewired
+  app runs against Aiven directly (Postgres + Kafka) and Supabase is still fully removed. Hosting the
+  glue *on* Aiven Apps is the named next step — MCP path proven (`aiven_application_deploy`), just
+  needs access. One-up line still holds: Aiven's own Lovable integration routes through a Supabase
+  Edge Function; our migrated app doesn't touch Supabase at all.
 - **MCP is the control plane, not the bulk pipe.** Bulk copy uses `aiven-db-migrate` /
   `pg_dump`; MCP does provisioning, inspection, schema/metadata, Kafka topics+events,
   validation reads, and receipts.
@@ -44,12 +47,12 @@ migration lights up the full behavior graph:
 | Realtime wall + leaderboard | **rewrite → Aiven Kafka** | **hero beat:** channel → Kafka, live event hop |
 | Auth (magic link) | adapter required | honestly flagged |
 | Storage (post images) | externalize to object store | honestly flagged |
-| Edge function (embeddings) | convert → **Aiven App** | the "delete Supabase" deploy beat |
+| Edge function (embeddings) | embeddings migrate to Aiven pgvector; glue → worker | flagged (Aiven Apps host = post-GA) |
 
 **Scope rule for the live demo:** build *all* features in Lovable (cheap there) + seed heavily;
-but on stage only **rewrite realtime→Kafka**, **migrate pgvector+tables**, and **deploy one
-Aiven App**. Auth/storage get classified + flagged instantly (no live surgery). Full range,
-no fragile over-reach.
+but on stage only **migrate pgvector+tables to Aiven**, **rewrite realtime→Kafka (live)**, show the
+**cost card** + **CTO recs**, and boot the rewired app against Aiven. Auth/storage/edge get
+classified + flagged instantly (no live surgery). Full range, no fragile over-reach.
 
 ## Open questions / blockers (help wanted)
 
@@ -59,8 +62,9 @@ no fragile over-reach.
   string, service-role key, SQL editor, and a GitHub-synced repo to scan. Cost story confirmed:
   Lovable Cloud bills jump 3–5× from 10k→50k users.
 - **Seed script ready:** [demo/pulsewall-seed.sql](demo/pulsewall-seed.sql) (~5k posts / ~50k reactions).
-- **🚧 Aiven Apps access.** Aiven Apps is *limited availability* + stateless. The "deploy a
-  live Aiven App" hero beat depends on us having access — **ask Daniil / Julie on site.**
+- **❌ Aiven Apps access — verified no-go (~00:30).** Account not LA-enabled, GitHub not connected.
+  Pivoted: no live App deploy in the demo; the rewired app runs against Aiven directly. Still worth
+  asking Daniil/Julie on site — if enabled before 18:00 we bolt the deploy on as a bonus beat.
 - **CTO agent scope.** For the hackathon, ship 1–2 real recommendations off live Aiven
   metrics — concrete, not a mockup.
 
