@@ -123,8 +123,9 @@ every recommendation is backed by portable protocol evidence.
 
 Current state, 2026-06-24:
 
-- Missions 01-05 have produced a source-gated direction, seeded evidence
-  scenario, React/Vite prototype spine, and visible seeded/live protocol proof.
+- Missions 01-06 have produced a source-gated direction, seeded evidence
+  scenario, React/Vite prototype spine, visible seeded/live protocol proof, and
+  a 4-minute pitch package.
 - The next bottleneck is rendered UX inspection on the presenter machine plus
   sponsor calibration.
 

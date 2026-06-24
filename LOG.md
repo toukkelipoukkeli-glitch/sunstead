@@ -87,3 +87,50 @@ Append-only working log for Tangled Evidence Radar.
 - New bottleneck: presenter-machine rendered inspection and sponsor calibration.
 - No new build mission should start before visual inspection unless sponsor
   feedback provides a stronger Tangled direction.
+
+## 2026-06-24 13:30 EEST — Mission 06: Problem-Soul Reframe
+
+- Used the local `navigate/` resources for a problem-first ideation pass.
+- Navigator state: emerging and aligned, with one high-amplitude new candidate
+  warm enough for sponsor calibration.
+- Reframed the challenge soul from "rank the next review item" to "make
+  maintainer judgment portable as protocol evidence."
+- Created `TANGLED_PROBLEM_SOUL.md`.
+- New candidate: **Tangled Case Law**, a protocol-native precedent layer for
+  open-source decisions.
+- Core demo: an incoming PR collides with a signed project precedent, then the
+  maintainer posts or previews a Tangled-native decision backed by issue, pull,
+  comment, vouch, repo, and spindle evidence.
+- T/A/P: Tangled Case Law 24/90/66, slightly above current Evidence Radar
+  22/86/64 because it is more problem-first and more surprising.
+- Decision: do not discard Evidence Radar yet. Test the Case Law wrapper with a
+  Tangled sponsor or mentor first; if the reaction is strong, most seeded
+  evidence work can be reused under the new wrapper.
+
+## 2026-06-24 13:08 EEST — Mission 06: Pitch Package
+
+- Created `PITCH.md`.
+- Pitch locks the current story: maintainer triage is valuable because Tangled
+  turns identity, trust, comments, pull records, repo identity, and CI into
+  portable evidence.
+- Added demo beat order, 4-minute pacing, Q&A answers, sponsor calibration
+  questions, and cut list.
+- T/A/P: pitch 12/75/63 -> 10/72/62.
+- Remaining bottleneck: rendered UX inspection and sponsor feedback. No further
+  desk-only mission is clearly higher value before those happen.
+
+## 2026-06-24 13:14 EEST — Mission 07: AT Protocol Deepening
+
+- Created `evidence-radar-atproto/` as a separate strategy packet.
+- Core clarification: AT Protocol is the evidence substrate, not the code host;
+  Git/knots carry code, Tangled records carry collaboration state, and Evidence
+  Radar turns those records into maintainer decisions.
+- Added `README.md` for the ATProto-native argument, Tangled-specific surfaces,
+  non-negotiable demo proof, and live-vs-seeded boundary.
+- Added `INTEGRATION_PLAN.md` mapping prototype fields in `src/data.ts` to
+  identity, trust, issue, pull, comment, spindle, and repo evidence.
+- Added `PITCH_NOTES.md` with the 15-second pitch, demo beats, Q&A answers, and
+  dangerous phrases to avoid.
+- Bottleneck unchanged: rendered UX inspection and sponsor feedback. The new
+  packet should guide edits only if the app or pitch starts drifting toward a
+  generic dashboard.

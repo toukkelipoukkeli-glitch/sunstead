@@ -25,8 +25,10 @@ Read in this order:
 4. [TANGLED_IDEAS.md](TANGLED_IDEAS.md)
 5. [TANGLED_ROADMAP.md](TANGLED_ROADMAP.md)
 6. [TANGLED_EVIDENCE_SCENARIO.md](TANGLED_EVIDENCE_SCENARIO.md)
-7. [LOG.md](LOG.md)
-8. [CHECKLIST.md](CHECKLIST.md)
+7. [PITCH.md](PITCH.md)
+8. [evidence-radar-atproto/README.md](evidence-radar-atproto/README.md)
+9. [LOG.md](LOG.md)
+10. [CHECKLIST.md](CHECKLIST.md)
 
 After the event:
 
