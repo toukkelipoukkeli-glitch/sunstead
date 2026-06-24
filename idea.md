@@ -87,27 +87,48 @@ through the Aiven Context / "context-maxing" lens.
 
 ---
 
-## Reading the room — the Aiven team (startup / business)
+## Reading the room — the Aiven judges (startup / business)
 
-The people we pitch are **not infra engineers** — they're the startup / business / go-to-market
-side. So the framing isn't "look at this clever infra demo," it's **"here's how Aiven captures
-the Lovable wave and keeps those accounts."** That's their go-to-market story, productized.
+Full per-person profiles + talking points: **[judges.md](judges.md)**. The people we pitch are
+**not infra engineers** — they're product + startup-program + go-to-market. So the framing isn't
+"look at this clever infra demo," it's **"here's how Aiven captures the Lovable wave and turns it
+into accounts that grow."**
 
-- **Lead with money and adoption, not internals.** $X → $Y savings, one-click move, accounts
-  that grow into more services. The MCP/agent mechanics are *how*, not the headline.
-- **Known judge lens (from prior Aiven sessions): Stanislav Dmitriev, Product Director,
-  "Aiven Context"** — evangelist of *context-maxing*, measured on **adoption / MRR**. Mirror
-  it: this agent *maxes the context* of a real running app (its schema, data, traffic, cost)
-  and turns that context into the right Aiven stack and a continuous stream of next-best
-  actions. Every migration is a new account activated; every CTO suggestion is consumption.
-- **The land-and-expand story writes itself:** migration is the *land* (move them onto Aiven,
-  cheaper), the CTO agent is the *expand* (it keeps recommending — and provisioning — more
-  Aiven services as the app grows).
+### The anchor frame — say Aiven's own new mission back to them
 
-> ⚠️ **TODO — per-person tailoring.** We met the whole team but I don't have their names /
-> LinkedIn profiles captured here yet. Drop the names (or paste the profiles) and I'll tailor
-> specific talking points per person, the way the [hivemind pitch](ideas/hivemind/PITCH.md)
-> does for Stanislav.
+Aiven just rebranded around one line (CEO Oskari Saarenmaa): **"Stop Managing. Start Building."** —
+"no longer just a data infrastructure platform… the best platform to build production applications
+and AI agents." **Our idea is that slogan, executed:** the founder stops managing the migration and
+the ops, the agent does it, they keep building. Open the pitch by quoting it back.
+
+### Lovable is a co-sponsor — frame it as partnership, not rescue
+
+Lovable is a Sunstead partner too (alongside Anthropic, Vercel, ElevenLabs). So the line is
+**"Lovable builds the app, Aiven runs it"** — a clean handoff at the moment of success, *not*
+"escape Lovable." Respect the starter backend; we're the graduation path, not the exit.
+
+### The three judges (one hook each — detail in judges.md)
+
+- **Stanislav Dmitriev — Product Director, "Aiven Context"; presented this challenge.** Evangelist
+  of **context-maxing** ("stop token-maxing, start context-maxing"). Mirror it: the agent *maxes
+  the context* of a real running app — schema, data, traffic, cost — and turns that into the right
+  Aiven stack + a stream of next-best actions. He's ex-presales/prototyping and a hackathon winner
+  who vibe-codes for fun — he rewards a **polished, real, playful** demo and **MCP depth**.
+- **Daniil Freidin — Startup Program Manager (ex-Slush/Junction).** Measures **real value to
+  founders** and adoption. Pitch the migrator as **top-of-funnel for Aiven for Startups**: it lands
+  the account at the exact moment a startup is scaling, "with confidence and the support they need."
+- **Julie Bastien — Startup Program Manager & Sustainability/GreenOps Lead.** Wants **production
+  reality over demos**, cost efficiency, and **trust in autonomous agents** (her stated worries:
+  AI autonomy vs. human validation, systems that confidently hallucinate). Answer both: the agent
+  **verifies the cutover** (row counts match, app boots) — validation built in — and the CTO agent
+  can surface **cost *and* carbon** (Aiven ships free in-console carbon metrics; that's her baby).
+
+### The land-and-expand story (for Daniil + Julie)
+
+Migration is the **land** (move them onto Aiven, cheaper, one click); the CTO agent is the
+**expand** (it keeps recommending — and provisioning — more Aiven services as the app grows). That
+*is* the Aiven for Startups thesis, automated — and it plugs straight into the **$100K credits**
+they hand out.
 
 ---
 
