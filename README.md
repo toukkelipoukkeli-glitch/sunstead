@@ -10,15 +10,27 @@ Use it to:
 - avoid repeated execution mistakes
 - run a short postmortem after every event
 
+Run the current Tangled Evidence Radar prototype:
+
+```sh
+npm install
+npm run dev
+```
+
 Read in this order:
 
-1. [AGENTS.md](/home/touko/Hackathons/AGENTS.md)
-2. [PLAYBOOK.md](/home/touko/Hackathons/PLAYBOOK.md)
-3. [CHECKLIST.md](/home/touko/Hackathons/CHECKLIST.md)
+1. [AGENTS.md](AGENTS.md)
+2. [PLAYBOOK.md](PLAYBOOK.md)
+3. [SUNSTEAD_HACK.md](SUNSTEAD_HACK.md)
+4. [TANGLED_IDEAS.md](TANGLED_IDEAS.md)
+5. [TANGLED_ROADMAP.md](TANGLED_ROADMAP.md)
+6. [TANGLED_EVIDENCE_SCENARIO.md](TANGLED_EVIDENCE_SCENARIO.md)
+7. [LOG.md](LOG.md)
+8. [CHECKLIST.md](CHECKLIST.md)
 
 After the event:
 
-1. copy [POSTMORTEM_TEMPLATE.md](/home/touko/Hackathons/POSTMORTEM_TEMPLATE.md)
+1. copy [POSTMORTEM_TEMPLATE.md](POSTMORTEM_TEMPLATE.md)
 2. write a dated postmortem
 3. update the playbook only if the lesson is reusable
 
