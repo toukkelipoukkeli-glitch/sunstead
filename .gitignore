@@ -2,3 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 navigate/
+
+# secrets — never commit
+.env
+.env.local
+*.local
+.env.*.local

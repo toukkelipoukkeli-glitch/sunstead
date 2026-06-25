@@ -1,0 +1,21 @@
+{
+  "name": "hivemind",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared live context for AI-assisted teams — streams every teammate's Claude Code session into one shared mind, on Aiven.",
+  "scripts": {
+    "start": "node src/index.ts",
+    "demo": "HIVEMIND_DEMO=1 node src/index.ts",
+    "preview": "HIVEMIND_DEMO=1 HIVEMIND_BACKFILL=8 HIVEMIND_PORT=3741 HIVEMIND_PROJECTS_DIR=\"$HOME/.claude/projects/-Users-touko-ursin-Development-sunstead\" node src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "//aiven": "For the Aiven backend run: npm i pg kafkajs  (loaded lazily; core runs without them)"
+}

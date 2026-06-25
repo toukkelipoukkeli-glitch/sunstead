@@ -1,0 +1,27 @@
+{
+  "name": "aiven-architect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aiven Architect — describe a workload, get a costed, benchmarked, one-click-provisionable Aiven stack.",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,web -c magenta,cyan \"bun run dev:server\" \"bun run dev:web\"",
+    "dev:server": "bun --watch server/index.ts",
+    "dev:web": "cd web && bun run dev",
+    "start": "bun server/index.ts",
+    "build": "cd web && bun run build",
+    "install:all": "bun install && cd web && bun install",
+    "typecheck": "tsc --noEmit && cd web && tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "postgres": "^3.4.5",
+    "kafkajs": "^2.2.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

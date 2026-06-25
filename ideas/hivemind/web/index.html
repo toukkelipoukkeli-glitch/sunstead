@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hivemind — live team context</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🧠</span>
+      <div class="brand-text">
+        <h1>Hivemind</h1>
+        <span class="tagline">live context across the team's Claude Code sessions</span>
+      </div>
+    </div>
+
+    <form id="search-form" class="search" autocomplete="off">
+      <span class="search-icon" aria-hidden="true">🔎</span>
+      <input
+        id="search-input"
+        type="search"
+        placeholder="Has anyone on the team…?  (e.g. set up Kafka SSL, fix the SSE leak)"
+        aria-label="Search team activity"
+      />
+      <button id="search-clear" type="button" class="search-clear" hidden aria-label="Clear search">✕</button>
+    </form>
+
+    <div class="conn">
+      <span id="conn-dot" class="conn-dot" title="connecting…"></span>
+      <span id="conn-label" class="conn-label">connecting…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel presence-panel" aria-label="Team presence">
+      <div class="panel-head">
+        <h2>Team</h2>
+        <span id="presence-count" class="badge">0</span>
+      </div>
+      <div id="presence-list" class="presence-list">
+        <div class="empty">No teammates yet. Waiting for activity…</div>
+      </div>
+    </aside>
+
+    <section class="panel feed-panel" aria-label="Activity feed">
+      <div class="panel-head">
+        <h2>Activity</h2>
+        <div class="feed-controls">
+          <button id="jump-latest" class="jump-latest" hidden>↓ New activity</button>
+          <span id="feed-count" class="badge">0</span>
+        </div>
+      </div>
+      <div id="feed" class="feed" tabindex="0">
+        <div class="empty">Waiting for the hive to wake up…</div>
+      </div>
+    </section>
+  </main>
+
+  <div id="search-overlay" class="search-overlay" hidden>
+    <div class="search-results-head">
+      <span id="search-results-title">Results</span>
+      <button id="search-close" type="button" class="search-close">close ✕</button>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+
+  <footer class="statusbar">
+    <span class="stat"><strong id="stat-events">0</strong> events</span>
+    <span class="sep">·</span>
+    <span class="stat"><strong id="stat-sessions">0</strong> sessions</span>
+    <span class="sep">·</span>
+    <span class="stat"><strong id="stat-actors">0</strong> teammates</span>
+    <span class="spacer"></span>
+    <span class="stat pill" id="stat-bus">bus: —</span>
+    <span class="stat pill" id="stat-store">store: —</span>
+  </footer>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
