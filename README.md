@@ -2,6 +2,13 @@
 
 This repo is a compact operating system for hackathons.
 
+## Demo
+
+<video src="https://github.com/toukkelipoukkeli-glitch/sunstead/raw/main/demo.mp4" controls muted playsinline width="100%"></video>
+
+> ▶︎ **[Watch the 50-second demo](demo.mp4)** (if the player above doesn't load) — an agent crew
+> migrates a Lovable/Supabase app onto Aiven: Connect → migrate the database → open the PR.
+
 Use it to:
 
 - classify the event before building
