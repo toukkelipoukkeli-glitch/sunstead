@@ -15,26 +15,39 @@ export const RealtimeProof = ({ checks, appEvents }: { checks: ValidationCheck[]
         <span className={passed ? "path-chip success" : "path-chip"}>{passed ? "passed" : "pending"}</span>
       </div>
       <div className="route-diagram">
-        <span>supabase.channel("posts")</span>
+        <span>
+          <em>Before</em>
+          Supabase Realtime publication
+        </span>
         <Activity aria-hidden="true" size={16} />
-        <span>Aiven Postgres app_events</span>
+        <span>
+          <em>After</em>
+          Aiven Postgres app_events
+        </span>
         <Activity aria-hidden="true" size={16} />
-        <span>/api/events/recent polling</span>
+        <span>
+          <em>Browser</em>
+          /api/events/recent polling
+        </span>
       </div>
       <div className={kafkaPassed ? "kafka-proof-callout success" : "kafka-proof-callout"}>
         <RadioTower aria-hidden="true" size={16} />
-        <span>Kafka workflow event: migration.events {kafkaPassed ? "roundtrip passed" : "pending"}</span>
+        <span>Kafka workflow proof: migration.events {kafkaPassed ? "roundtrip passed" : "warning-only until the optional workspace path is configured"}</span>
       </div>
       <div className="event-list">
-        {appEvents.slice(0, 3).map((event) => (
-          <div className="event-row" key={event.id}>
-            <CheckCircle2 aria-hidden="true" size={15} />
-            <div>
-              <strong>{event.eventType}</strong>
-              <p>{event.entityType} - {event.entityId}</p>
+        {appEvents.length === 0 ? (
+          <div className="empty-state">Browser event rows appear after the controlled Aiven provider writes app_events.</div>
+        ) : (
+          appEvents.slice(0, 3).map((event) => (
+            <div className="event-row" key={event.id}>
+              <CheckCircle2 aria-hidden="true" size={15} />
+              <div>
+                <strong>{event.eventType}</strong>
+                <p>{event.entityType} - {event.entityId}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </section>
   )

@@ -10,8 +10,8 @@ export const CutoverProof = ({ snapshot }: { snapshot: RunSnapshot }) => {
     <section className="panel cutover-panel">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Scoped cutover</p>
-          <h2>Scoped runtime cutover</h2>
+          <p className="eyebrow">Controlled cutover</p>
+          <h2>Runtime cutover</h2>
         </div>
         <span className={cutoverReady ? "path-chip success" : "path-chip"}>{cutoverReady ? "ready" : "waiting"}</span>
       </div>
@@ -31,7 +31,7 @@ export const CutoverProof = ({ snapshot }: { snapshot: RunSnapshot }) => {
       </div>
       <p className="cutover-note">
         <CheckCircle2 aria-hidden="true" size={15} />
-        Supabase removal is scoped to the demo runtime. Source stays untouched; rollback is ready.
+        Supabase removal is limited to the controlled runtime path. Source stays untouched; rollback is ready.
       </p>
     </section>
   )

@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react"
 
-const proofItems = ["Aiven Postgres", "Kafka migration.events", "MCP receipts", "Scoped rollback"]
+const proofItems = ["Aiven Postgres", "Kafka migration.events", "Action receipts", "Scoped rollback"]
 
 const serviceCards = [
   {
@@ -18,7 +18,7 @@ const serviceCards = [
   {
     color: "#5ffa74",
     eyebrow: "Control plane",
-    title: "MCP receipts",
+    title: "Action receipts",
     copy: "Project, service, database, and topic actions are logged with rollback context."
   }
 ]
@@ -26,7 +26,7 @@ const serviceCards = [
 export const SalesHomePage = () => (
   <main className="sales-page">
     <div className="sales-announcement">
-      <a href="/control">Aiven hackathon demo: PulseWall migration path ready</a>
+      <a href="/control">PulseWall migration path ready on Aiven</a>
     </div>
     <header className="sales-nav">
       <a className="sales-brand" href="/" aria-label="Aiden home">
@@ -37,7 +37,7 @@ export const SalesHomePage = () => (
         <a href="/control">Product</a>
         <a href="/control">Platform</a>
         <a href="/control">Docs</a>
-        <a className="nav-outline" href="/control">Book a demo</a>
+        <a className="nav-outline" href="/control">Open control room</a>
         <a className="nav-solid" href="/control">Get building</a>
       </nav>
     </header>
@@ -64,44 +64,78 @@ export const SalesHomePage = () => (
       </div>
 
       <div className="sales-product-visual" aria-label="Aiden Migration Control Room preview">
-        <div className="mock-product-bar">
-          <span className="service-dot postgres-dot" />
-          <strong>Aiven for PostgreSQL</strong>
-          <em>running</em>
-        </div>
-        <div className="mock-command">
-          <div>
-            <span>PulseWall migration run</span>
-            <strong>Scoped demo path running</strong>
+        <div className="migration-preview">
+          <div className="preview-topline">
+            <span className="service-dot postgres-dot" />
+            <div>
+              <small>Aiden control room</small>
+              <strong>PulseWall migration ready</strong>
+            </div>
+            <em>82/100</em>
           </div>
-          <button type="button">Graduate To Aiven</button>
-        </div>
-        <div className="mock-product-bar kafka-bar">
-          <span className="service-dot kafka-dot" />
-          <strong>Aiven for Apache Kafka</strong>
-          <em>migration.events</em>
-        </div>
-        <div className="mock-grid">
-          <div className="mock-panel">
-            <span>Source</span>
-            <strong>Lovable / Supabase</strong>
-            <p>Original app unchanged</p>
+
+          <div className="preview-flow">
+            <div className="preview-node">
+              <small>Source app</small>
+              <strong>Lovable / Supabase</strong>
+              <span>runtime unchanged</span>
+            </div>
+            <div className="preview-arrow" aria-hidden="true">
+              <ArrowRight size={18} />
+            </div>
+            <div className="preview-node target-node">
+              <small>Aiven target</small>
+              <strong>Postgres + Kafka</strong>
+              <span>shadow path validated</span>
+            </div>
           </div>
-          <div className="mock-panel active">
-            <span>Execution timeline</span>
-            <strong>Behavior mapped</strong>
-            <p>Realtime -&gt; app_events</p>
+
+          <div className="preview-services" aria-label="Aiven service readiness">
+            <article>
+              <span className="service-dot postgres-dot" />
+              <div>
+                <small>Aiven for PostgreSQL</small>
+                <strong>app_events live</strong>
+              </div>
+            </article>
+            <article>
+              <span className="service-dot kafka-dot" />
+              <div>
+                <small>Aiven for Apache Kafka</small>
+                <strong>migration.events observed</strong>
+              </div>
+            </article>
+            <article>
+              <span className="service-dot" />
+              <div>
+                <small>Action receipts</small>
+                <strong>rollback path recorded</strong>
+              </div>
+            </article>
           </div>
-          <div className="mock-panel">
-            <span>Aiven landing zone</span>
-            <strong>Postgres + Kafka ready</strong>
-            <p>MCP receipts recording</p>
+
+          <div className="preview-map" aria-label="Behavior migration map">
+            <div>
+              <span>Behavior</span>
+              <span>Treatment</span>
+              <span>Status</span>
+            </div>
+            <div>
+              <strong>Tables + rows</strong>
+              <span>Aiven Postgres</span>
+              <em>validated</em>
+            </div>
+            <div>
+              <strong>Realtime channel</strong>
+              <span>app_events polling</span>
+              <em>passed</em>
+            </div>
+            <div>
+              <strong>Auth / Storage</strong>
+              <span>production adapter</span>
+              <em className="review">review</em>
+            </div>
           </div>
-        </div>
-        <div className="mock-report">
-          <span>Migration readiness memo</span>
-          <strong>82/100</strong>
-          <p>Rows, app_events polling, and workflow event validated.</p>
         </div>
       </div>
     </section>

@@ -2,6 +2,8 @@ import type { RunEvent } from "@aiden/contracts"
 import { Circle, CheckCircle2 } from "lucide-react"
 import { ModeBadge } from "./ModeBadge"
 
+const eventLabel = (type: string) => type.replaceAll("demo_runtime", "runtime")
+
 export const AgentTimeline = ({ events }: { events: RunEvent[] }) => (
   <section className="panel timeline-panel">
     <div className="panel-header">
@@ -20,7 +22,7 @@ export const AgentTimeline = ({ events }: { events: RunEvent[] }) => (
             <CheckCircle2 aria-hidden="true" size={16} />
             <div>
               <div className="timeline-title">
-                <strong>{event.type}</strong>
+                <strong>{eventLabel(event.type)}</strong>
                 <ModeBadge source={event.source} />
               </div>
               <p>{event.summary}</p>
@@ -34,7 +36,7 @@ export const AgentTimeline = ({ events }: { events: RunEvent[] }) => (
           <Circle aria-hidden="true" size={16} />
           <div>
             <strong>next proof slot</strong>
-            <p>Fixture player is ready to advance the run.</p>
+            <p>Aiden is ready to advance the run.</p>
           </div>
         </div>
       ) : null}

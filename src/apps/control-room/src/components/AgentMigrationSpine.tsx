@@ -1,9 +1,15 @@
 import type { RunEvent } from "@aiden/contracts"
-import { CheckCircle2, Circle, TimerReset } from "lucide-react"
+import { CheckCircle2, Circle, CircleDashed, TimerReset, TriangleAlert } from "lucide-react"
 import { ProofSourceBadge } from "./ProofSourceBadge"
 
-const eventLabel = (type: string) => type.replaceAll(".", " -> ")
+const eventLabel = (type: string) => type.replaceAll("demo_runtime", "runtime").replaceAll(".", " -> ")
 const roleLabel = (agent: string) => agent.replaceAll("_", " ")
+
+const statusIcon = (status: RunEvent["status"]) => {
+  if (status === "failed") return <TriangleAlert aria-hidden="true" size={16} />
+  if (status === "skipped") return <CircleDashed aria-hidden="true" size={16} />
+  return <CheckCircle2 aria-hidden="true" size={16} />
+}
 
 export const AgentMigrationSpine = ({ events }: { events: RunEvent[] }) => (
   <section className="panel timeline-panel">
@@ -19,12 +25,13 @@ export const AgentMigrationSpine = ({ events }: { events: RunEvent[] }) => (
         <div className="empty-state">Waiting for `Graduate To Aiven`.</div>
       ) : (
         events.map((event) => (
-          <div className="timeline-item" key={`${event.type}-${event.createdAt}`}>
-            <CheckCircle2 aria-hidden="true" size={16} />
+          <div className={`timeline-item timeline-${event.status}`} key={`${event.type}-${event.createdAt}`}>
+            {statusIcon(event.status)}
             <div>
               <div className="timeline-title">
                 <strong>{eventLabel(event.type)}</strong>
                 <ProofSourceBadge source={event.source} />
+                <span className={`status-pill timeline-status status-${event.status}`}>{event.status}</span>
               </div>
               <p>{event.summary}</p>
               <span>{roleLabel(event.agent)}</span>

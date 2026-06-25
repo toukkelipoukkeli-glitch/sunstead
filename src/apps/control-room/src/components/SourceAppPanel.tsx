@@ -4,17 +4,19 @@ import { Database, Heart, Image, Send, ShieldCheck } from "lucide-react"
 export const SourceAppPanel = ({
   posts,
   onReact,
-  cutoverReady
+  cutoverReady,
+  sourceLabel
 }: {
   posts: Post[]
   onReact: () => void
   cutoverReady: boolean
+  sourceLabel: string
 }) => (
   <section className="panel source-panel">
     <div className="panel-header">
       <div>
-        <p className="eyebrow">{cutoverReady ? "Scoped runtime" : "Existing app"}</p>
-        <h2>PulseWall</h2>
+        <p className="eyebrow">{cutoverReady ? "Aiven runtime" : "Source app"}</p>
+        <h2>{sourceLabel}</h2>
       </div>
       <span className={cutoverReady ? "path-chip success" : "path-chip"}>
         {cutoverReady ? "Aiven adapter" : "source untouched"}
@@ -24,8 +26,8 @@ export const SourceAppPanel = ({
       {cutoverReady ? <Database aria-hidden="true" size={16} /> : <ShieldCheck aria-hidden="true" size={16} />}
       <span>
         {cutoverReady
-          ? "New path: Lovable UI -> local Aiden adapter -> Aiven Postgres + app_events"
-          : "Old path: Lovable UI -> Supabase client -> Postgres / Realtime"}
+          ? "Aiven path: Lovable UI -> local Aiden adapter -> Aiven Postgres + app_events"
+          : "Source path: Lovable UI -> Supabase client -> Postgres / Realtime"}
       </span>
     </div>
     {posts[0] ? (
@@ -58,7 +60,7 @@ export const SourceAppPanel = ({
     </div>
     <button className="secondary-button" type="button" onClick={onReact}>
       <Send aria-hidden="true" size={15} />
-      Trigger demo reaction
+      Trigger reaction
     </button>
   </section>
 )

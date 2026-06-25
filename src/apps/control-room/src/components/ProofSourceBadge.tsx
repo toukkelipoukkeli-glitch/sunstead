@@ -1,6 +1,11 @@
 import type { ProofSource } from "@aiden/contracts"
 
-export const ProofSourceBadge = ({ source }: { source: ProofSource }) => (
-  <span className={`mode-badge mode-${source}`}>{source}</span>
-)
+const proofSourceLabel: Record<ProofSource, string> = {
+  fixture: "prepared",
+  cached: "cached",
+  live: "live"
+}
 
+export const ProofSourceBadge = ({ source }: { source: ProofSource }) => (
+  <span className={`mode-badge mode-${source}`}>{proofSourceLabel[source]}</span>
+)

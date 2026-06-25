@@ -3,6 +3,7 @@ import { CheckCircle2, CircleDashed, TriangleAlert } from "lucide-react"
 import { ProofSourceBadge } from "./ProofSourceBadge"
 
 const label = (value: string) => value.replaceAll("_", " ")
+const tableLabel = (value: string) => (value === "demo_users" ? "users" : value)
 
 const iconFor = (status: ValidationCheck["status"]) => {
   if (status === "passed") return <CheckCircle2 aria-hidden="true" size={16} />
@@ -20,17 +21,21 @@ export const ValidationCards = ({ checks, report }: { checks: ValidationCheck[];
       <span className="path-chip success">{checks.filter((check) => check.status === "passed").length} passed</span>
     </div>
 
-    <div className="validation-grid">
-      {report.rowValidations.map((row) => (
-        <article className="validation-card" key={row.table}>
-          <div>
-            <span>{row.table}</span>
-            <strong>{row.actual}/{row.expected}</strong>
-          </div>
-          <ProofSourceBadge source={row.source} />
-        </article>
-      ))}
-    </div>
+    {report.rowValidations.length > 0 ? (
+      <div className="validation-grid">
+        {report.rowValidations.map((row) => (
+          <article className="validation-card" key={row.table}>
+            <div>
+              <span>{tableLabel(row.table)}</span>
+              <strong>{row.actual}/{row.expected}</strong>
+            </div>
+            <ProofSourceBadge source={row.source} />
+          </article>
+        ))}
+      </div>
+    ) : (
+      <div className="empty-state">Row validation appears after the migration step applies the scoped dataset.</div>
+    )}
 
     <div className="check-list">
       {checks.map((check) => (

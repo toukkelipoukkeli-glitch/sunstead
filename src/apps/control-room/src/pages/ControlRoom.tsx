@@ -3,6 +3,7 @@ import { finalReport as fixtureOutcomeReport } from "@aiden/fixtures"
 import { Activity, CheckCircle2, Database, RadioTower, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { AgentMigrationSpine } from "../components/AgentMigrationSpine"
+import { AccessBrokerPanel } from "../components/AccessBrokerPanel"
 import { AivenProofPlane } from "../components/AivenProofPlane"
 import { BehaviorMap } from "../components/BehaviorMap"
 import { ColdOpenOutcome } from "../components/ColdOpenOutcome"
@@ -23,6 +24,7 @@ import {
   listPosts,
   listRecentEvents,
   pauseRun,
+  runAccessPreflight,
   resetRun,
   runDataMigration,
   runKafkaAgentBus,
@@ -32,22 +34,25 @@ import {
   stepRun
 } from "../lib/api"
 import { deriveRunProgress, latestSummary } from "../lib/deriveRunView"
+import { readStoredSetupProfile } from "../lib/setupProfile"
 
 export const ControlRoom = () => {
   const [snapshot, setSnapshot] = useState<RunSnapshot | null>(null)
   const [posts, setPosts] = useState<Post[]>([])
   const [appEvents, setAppEvents] = useState<PulseWallEvent[]>([])
-  const [coldOpen, setColdOpen] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [proofRunning, setProofRunning] = useState(false)
   const [scanRunning, setScanRunning] = useState(false)
   const [migrationRunning, setMigrationRunning] = useState(false)
   const [kafkaRunning, setKafkaRunning] = useState(false)
   const [cutoverRunning, setCutoverRunning] = useState(false)
+  const [graduateRunning, setGraduateRunning] = useState(false)
+  const [accessRunning, setAccessRunning] = useState(false)
 
   const runId = snapshot?.runId
   const progress = deriveRunProgress(snapshot)
   const currentSummary = latestSummary(snapshot)
+  const coldOpenReport = snapshot?.report.demoCutoverStatus === "passed" ? snapshot.report : fixtureOutcomeReport
   const cutoverReady = Boolean(
     snapshot?.events.some((event) => event.type === "cutover.demo_runtime.ready" && event.status === "ok")
   )
@@ -62,7 +67,7 @@ export const ControlRoom = () => {
     let cancelled = false
     const boot = async () => {
       try {
-        const run = await createRun()
+        const run = await createRun(readStoredSetupProfile())
         await refreshAdapter()
         if (!cancelled) setSnapshot(run)
       } catch (bootError) {
@@ -76,7 +81,7 @@ export const ControlRoom = () => {
   }, [])
 
   useEffect(() => {
-    if (!runId || coldOpen) return
+    if (!runId) return
     const interval = window.setInterval(async () => {
       try {
         const next = await getRun(runId)
@@ -86,27 +91,46 @@ export const ControlRoom = () => {
       }
     }, 700)
     return () => window.clearInterval(interval)
-  }, [runId, coldOpen])
+  }, [runId])
 
   const visibleEvents = useMemo(() => snapshot?.events ?? [], [snapshot])
+  const canGraduate = Boolean(snapshot?.accessSnapshot.canGraduate)
+
+  const refreshAccess = async () => {
+    if (!runId || accessRunning) return
+    setError(null)
+    setAccessRunning(true)
+    try {
+      setSnapshot(await runAccessPreflight(runId))
+    } catch (accessError) {
+      setError(accessError instanceof Error ? accessError.message : "Failed to refresh access")
+    } finally {
+      setAccessRunning(false)
+    }
+  }
 
   const graduate = async () => {
-    if (!runId) return
-    setColdOpen(false)
+    if (!runId || graduateRunning || !canGraduate) return
     setError(null)
-    setSnapshot(await graduateRun(runId))
+    setGraduateRunning(true)
+    try {
+      setSnapshot(await graduateRun(runId))
+      await refreshAdapter()
+    } catch (graduateError) {
+      setError(graduateError instanceof Error ? graduateError.message : "Failed to run one-click graduation")
+    } finally {
+      setGraduateRunning(false)
+    }
   }
 
   const reset = async () => {
     if (!runId) return
     setSnapshot(await resetRun(runId))
-    setColdOpen(true)
     await refreshAdapter()
   }
 
   const step = async () => {
     if (!runId) return
-    setColdOpen(false)
     setSnapshot(await stepRun(runId))
   }
 
@@ -117,7 +141,6 @@ export const ControlRoom = () => {
 
   const runLiveProof = async () => {
     if (!runId || proofRunning) return
-    setColdOpen(false)
     setError(null)
     setProofRunning(true)
     try {
@@ -131,7 +154,6 @@ export const ControlRoom = () => {
 
   const runScanner = async () => {
     if (!runId || scanRunning) return
-    setColdOpen(false)
     setError(null)
     setScanRunning(true)
     try {
@@ -145,7 +167,6 @@ export const ControlRoom = () => {
 
   const runMigration = async () => {
     if (!runId || migrationRunning) return
-    setColdOpen(false)
     setError(null)
     setMigrationRunning(true)
     try {
@@ -159,7 +180,6 @@ export const ControlRoom = () => {
 
   const runCutover = async () => {
     if (!runId || cutoverRunning) return
-    setColdOpen(false)
     setError(null)
     setCutoverRunning(true)
     try {
@@ -174,7 +194,6 @@ export const ControlRoom = () => {
 
   const runKafka = async () => {
     if (!runId || kafkaRunning) return
-    setColdOpen(false)
     setError(null)
     setKafkaRunning(true)
     try {
@@ -206,99 +225,112 @@ export const ControlRoom = () => {
   }
 
   return (
-    <main className={`app-shell control-room${coldOpen ? " cold-open-shell" : ""}`}>
-      {coldOpen ? null : <CommandStrip snapshot={snapshot} onGraduate={graduate} />}
+    <main className="app-shell control-room">
+      <CommandStrip
+        canGraduate={canGraduate}
+        graduateBlockers={snapshot.accessSnapshot.blockers}
+        isRunning={graduateRunning}
+        snapshot={snapshot}
+        onGraduate={graduate}
+      />
+
+      <AccessBrokerPanel
+        accessSnapshot={snapshot.accessSnapshot}
+        isRefreshing={accessRunning}
+        onRefresh={refreshAccess}
+      />
 
       {error ? <div className="error-strip">{error}</div> : null}
 
-      {coldOpen ? (
-        <ColdOpenOutcome report={fixtureOutcomeReport} onRewind={() => setColdOpen(false)} />
-      ) : (
-        <>
-          <section className="run-strip">
-            <div>
-              <p className="eyebrow">Current state</p>
-              <strong>{snapshot.state.replaceAll("_", " ")}</strong>
-              <span>{currentSummary}</span>
-            </div>
-            <div className="progress-shell" aria-label={`Run progress ${progress}%`}>
-              <div style={{ width: `${progress}%` }} />
-            </div>
-            <div className="run-proof">
-              <span>
-                <CheckCircle2 aria-hidden="true" size={16} />
-                {visibleEvents.length}/14 events
-              </span>
-              <span>
-                <Activity aria-hidden="true" size={16} />
-                Postgres app_events
-              </span>
-              <span>
-                <RadioTower aria-hidden="true" size={16} />
-                Workflow events
-              </span>
-            </div>
-          </section>
+      <ColdOpenOutcome accessSnapshot={snapshot.accessSnapshot} report={coldOpenReport} />
 
-          <PresenterControls
-            cutoverRunning={cutoverRunning}
-            eventCount={visibleEvents.length}
-            kafkaRunning={kafkaRunning}
-            migrationRunning={migrationRunning}
-            onColdOpen={() => setColdOpen(true)}
-            onPause={pause}
-            onRunCutover={runCutover}
-            onRunKafka={runKafka}
-            onRunMigration={runMigration}
-            onRunProof={runLiveProof}
-            onRunScan={runScanner}
-            onReset={reset}
-            onStep={step}
-            proofRunning={proofRunning}
-            scanRunning={scanRunning}
+      <section className="run-strip">
+        <div>
+          <p className="eyebrow">Current state</p>
+          <strong>{snapshot.state.replaceAll("_", " ")}</strong>
+          <span>{currentSummary}</span>
+        </div>
+        <div className="progress-shell" aria-label={`Run progress ${progress}%`}>
+          <div style={{ width: `${progress}%` }} />
+        </div>
+        <div className="run-proof">
+          <span>
+            <CheckCircle2 aria-hidden="true" size={16} />
+            {visibleEvents.length}/14 events
+          </span>
+          <span>
+            <Activity aria-hidden="true" size={16} />
+            Postgres app_events
+          </span>
+          <span>
+            <RadioTower aria-hidden="true" size={16} />
+            Workflow events
+          </span>
+        </div>
+      </section>
+
+      <PresenterControls
+        cutoverRunning={cutoverRunning}
+        disabled={graduateRunning}
+        eventCount={visibleEvents.length}
+        kafkaRunning={kafkaRunning}
+        migrationRunning={migrationRunning}
+        onPause={pause}
+        onRunCutover={runCutover}
+        onRunKafka={runKafka}
+        onRunMigration={runMigration}
+        onRunProof={runLiveProof}
+        onRunScan={runScanner}
+        onReset={reset}
+        onStep={step}
+        proofRunning={proofRunning}
+        scanRunning={scanRunning}
+      />
+
+      <section className="proof-stage" aria-label="Migration execution stage">
+        <div className="proof-lane">
+          <div className="lane-header">
+            <span>01</span>
+            <strong>Source app</strong>
+          </div>
+          <SourceAppPanel
+            posts={posts}
+            onReact={reactToTopPost}
+            cutoverReady={cutoverReady}
+            sourceLabel={snapshot.setupProfile.sourceLabel}
           />
+        </div>
 
-          <section className="proof-stage" aria-label="Migration execution stage">
-            <div className="proof-lane">
-              <div className="lane-header">
-                <span>01</span>
-                <strong>Source app</strong>
-              </div>
-              <SourceAppPanel posts={posts} onReact={reactToTopPost} cutoverReady={cutoverReady} />
-            </div>
+        <div className="proof-lane center-lane">
+          <div className="lane-header">
+            <span>02</span>
+            <strong>Execution timeline</strong>
+          </div>
+          <AgentMigrationSpine events={visibleEvents} />
+          <BehaviorMap findings={snapshot.behaviorFindings} />
+        </div>
 
-            <div className="proof-lane center-lane">
-              <div className="lane-header">
-                <span>02</span>
-                <strong>Execution timeline</strong>
-              </div>
-              <AgentMigrationSpine events={visibleEvents} />
-              <BehaviorMap findings={snapshot.behaviorFindings} />
-            </div>
+        <div className="proof-lane">
+          <div className="lane-header">
+            <span>03</span>
+            <strong>Aiven landing zone</strong>
+          </div>
+          <AivenProofPlane checks={snapshot.validationChecks} receipts={snapshot.receipts} events={visibleEvents} />
+          <ReceiptStream receipts={snapshot.receipts} />
+          <KafkaAgentBus events={snapshot.kafkaEvents} />
+        </div>
+      </section>
 
-            <div className="proof-lane">
-              <div className="lane-header">
-                <span>03</span>
-                <strong>Aiven landing zone</strong>
-              </div>
-              <AivenProofPlane checks={snapshot.validationChecks} receipts={snapshot.receipts} events={visibleEvents} />
-              <ReceiptStream receipts={snapshot.receipts} />
-              <KafkaAgentBus events={snapshot.kafkaEvents} />
-            </div>
-          </section>
-
-          <section className="outcome-rail" aria-label="Migration outcome rail">
-            <RealtimeProof checks={snapshot.validationChecks} appEvents={appEvents} />
-            <ValidationCards checks={snapshot.validationChecks} report={snapshot.report} />
-            <CutoverProof snapshot={snapshot} />
-            <FinalReport report={snapshot.report} />
-          </section>
-        </>
-      )}
+      <section className="outcome-rail" aria-label="Migration outcome rail">
+        <RealtimeProof checks={snapshot.validationChecks} appEvents={appEvents} />
+        <ValidationCards checks={snapshot.validationChecks} report={snapshot.report} />
+        <CutoverProof snapshot={snapshot} />
+        <FinalReport report={snapshot.report} />
+      </section>
 
       <footer className="footer-note">
         <Zap aria-hidden="true" size={14} />
-        Evidence labels show fixture, live, or cached data while each slot is replaced behind the same contracts.
+        Evidence labels show prepared, live, or cached data while each slot is replaced behind the same contracts.
       </footer>
     </main>
   )

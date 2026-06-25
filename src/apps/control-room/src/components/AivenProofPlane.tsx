@@ -30,8 +30,8 @@ export const AivenProofPlane = ({
         <span className="path-chip success">{receipts.length} receipts</span>
       </div>
       <div className="proof-summary">
-        <strong>Aiven is carrying the scoped runtime path.</strong>
-        <span>MCP receipts, Postgres validation, and Kafka workflow events use the same slots live mode will replace.</span>
+        <strong>Aiven is carrying the controlled runtime path.</strong>
+        <span>Action receipts, Postgres validation, and Kafka workflow events use the same slots live mode will replace.</span>
       </div>
       <div className="service-readiness-list">
         <div className={postgresReady ? "service-row ready" : "service-row"}>
@@ -46,7 +46,7 @@ export const AivenProofPlane = ({
         </div>
         <div className={receiptReady ? "service-row ready" : "service-row"}>
           <FileCheck2 aria-hidden="true" />
-          <span>MCP receipts</span>
+          <span>Action receipts</span>
           <strong>{receiptReady ? "recording" : "waiting"}</strong>
         </div>
         <div className={validationReady ? "service-row ready" : "service-row"}>

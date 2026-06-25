@@ -1,14 +1,23 @@
-import type { Report } from "@aiden/contracts"
-import { CheckCircle2, Database, RadioTower, RotateCcw, ShieldAlert } from "lucide-react"
+import type { AccessSnapshot, Report } from "@aiden/contracts"
+import { CheckCircle2, Database, RadioTower, ShieldAlert } from "lucide-react"
 import { ProofSourceBadge } from "./ProofSourceBadge"
 
-export const ColdOpenOutcome = ({
-  report,
-  onRewind
-}: {
-  report: Report
-  onRewind: () => void
-}) => (
+const guideSteps = [
+  "Connect workspace",
+  "Scan behavior",
+  "Create Aiven landing zone",
+  "Migrate and validate",
+  "Cut over runtime path"
+]
+
+const kafkaOutcome = (accessSnapshot: AccessSnapshot) => {
+  const kafka = accessSnapshot.checks.find((check) => check.id === "aiven_kafka")
+  if (kafka?.status === "live_verified") return "Aiven Kafka migration.events live verified"
+  if (kafka?.status === "connected") return "Kafka configured; workflow proof runs after Postgres cutover"
+  return "Kafka proof cached/warning; Postgres path remains live-critical"
+}
+
+export const ColdOpenOutcome = ({ accessSnapshot, report }: { accessSnapshot: AccessSnapshot; report: Report }) => (
   <section className="cold-open">
     <div className="cold-copy">
       <div className="cold-kicker">
@@ -17,26 +26,32 @@ export const ColdOpenOutcome = ({
       </div>
       <h2>{report.headline}</h2>
       <p>
-        The scoped demo runtime is on Aiven. The original PulseWall app remains untouched,
-        blockers are explicit, and every migration step has a receipt path.
+        The controlled runtime path is on Aiven through Henri's pre-connected workspace. Aiden can
+        create a workspace during setup for teams without Aiven. The original PulseWall app remains
+        untouched, blockers are explicit, and every migration step has a receipt path.
       </p>
       <div className="outcome-path">
         <span>Lovable UI</span>
-        <strong>local Aiden adapter</strong>
+        <strong>Aiven workspace</strong>
         <span>Aiven Postgres app_events</span>
       </div>
-      <div className="cold-actions">
-        <button className="primary-button" type="button" onClick={onRewind}>
-          <RotateCcw aria-hidden="true" size={16} />
-          Rewind to one click
-        </button>
+      <div className="cold-guide" aria-label="One-click migration flow">
+        <div>
+          <p className="eyebrow">One-click flow</p>
+          <strong>{report.demoCutoverStatus === "passed" ? "Current run outcome" : "Planned run"}</strong>
+        </div>
+        <ol>
+          {guideSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
       </div>
     </div>
     <div className="outcome-grid">
       <div className="outcome-grid-header">
         <div>
           <p className="eyebrow">Completed outcome</p>
-          <strong>Migration complete for the scoped demo path</strong>
+          <strong>Migration path ready</strong>
         </div>
         <span>{report.readinessScore}/100</span>
       </div>
@@ -53,7 +68,7 @@ export const ColdOpenOutcome = ({
       <div className="outcome-tile">
         <RadioTower aria-hidden="true" />
         <span>Workflow events</span>
-        <strong>Aiven Kafka migration.events</strong>
+        <strong>{kafkaOutcome(accessSnapshot)}</strong>
       </div>
       <div className="outcome-tile warning">
         <ShieldAlert aria-hidden="true" />
