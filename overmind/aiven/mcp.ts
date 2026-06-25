@@ -83,6 +83,9 @@ async function streamTurn(
   mcpServers: AnyBlock[],
   signal: AbortSignal,
 ): Promise<StreamedMessage> {
+  // NON-streaming: a single request. The MCP connector executes aiven_* tools server-side and returns
+  // the full message (mcp_tool_use + mcp_tool_result + text blocks) at once. SSE streaming was dropping
+  // mid-tool ("Premature close") and tripping the UNAVAILABLE fallback; this single POST is reliable.
   const res = await fetch('https://api.anthropic.com/v1/messages?beta=true', {
     method: 'POST',
     headers: {
@@ -91,84 +94,25 @@ async function streamTurn(
       'anthropic-version': '2023-06-01',
       'anthropic-beta': 'mcp-client-2025-04-04',
     },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      stream: true,
-      messages,
-      mcp_servers: mcpServers,
-    }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 4096, messages, mcp_servers: mcpServers }),
     signal,
   })
-  if (!res.ok || !res.body) {
-    throw new Error(`anthropic ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      detail = (await res.text()).slice(0, 200)
+    } catch {
+      /* status alone is enough */
+    }
+    throw new Error(`anthropic ${res.status}${detail ? `: ${detail}` : ''}`)
   }
-
-  const blocks: AnyBlock[] = []
-  let curText = '' // accumulates the current text block
-  let curJson = '' // accumulates input_json_delta for the current tool_use block
-  let stopReason: string | undefined
+  const json: AnyBlock = await res.json()
+  const blocks: AnyBlock[] = Array.isArray(json.content) ? json.content : []
   let text = ''
-
-  const finalizeBlock = () => {
-    const last = blocks[blocks.length - 1]
-    if (!last) return
-    if (last.type === 'text') {
-      last.text = curText
-      text += curText
-    } else if (last.type === 'mcp_tool_use' || last.type === 'tool_use') {
-      if (curJson) {
-        try {
-          last.input = JSON.parse(curJson)
-        } catch {
-          /* leave whatever partial input the start event carried */
-        }
-      }
-    }
-    curText = ''
-    curJson = ''
+  for (const b of blocks) {
+    if (b?.type === 'text' && typeof b.text === 'string') text += b.text
   }
-
-  const decoder = new TextDecoder()
-  let buf = ''
-  for await (const chunk of res.body as any as AsyncIterable<Uint8Array>) {
-    buf += decoder.decode(chunk, { stream: true })
-    let idx: number
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
-      const frame = buf.slice(0, idx)
-      buf = buf.slice(idx + 2)
-      const dataLine = frame.split('\n').find((l) => l.startsWith('data:'))
-      if (!dataLine) continue
-      let ev: AnyBlock
-      try {
-        ev = JSON.parse(dataLine.slice(5).trim())
-      } catch {
-        continue
-      }
-      switch (ev.type) {
-        case 'content_block_start':
-          blocks.push({ ...ev.content_block })
-          curText = ''
-          curJson = ''
-          break
-        case 'content_block_delta':
-          if (ev.delta?.type === 'text_delta') curText += ev.delta.text
-          else if (ev.delta?.type === 'input_json_delta') curJson += ev.delta.partial_json ?? ''
-          break
-        case 'content_block_stop':
-          finalizeBlock()
-          break
-        case 'message_delta':
-          if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason
-          break
-        case 'error':
-          throw new Error(ev.error?.message || 'anthropic stream error')
-        default:
-          break
-      }
-    }
-  }
-  return { stopReason, text, blocks }
+  return { stopReason: json.stop_reason, text, blocks }
 }
 
 export async function runAivenAgent(
