@@ -1,0 +1,38 @@
+{
+  "name": "pulsewall-aiven",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Aiven-native PulseWall — zero Supabase. Postgres + Kafka + pgvector, own auth, Kafka→SSE realtime.",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx migrator/migrate.ts",
+    "cto": "tsx cto/agent.ts",
+    "db:schema": "tsx server/apply-schema.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "dotenv": "^16.4.7",
+    "hono": "^4.6.14",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}
