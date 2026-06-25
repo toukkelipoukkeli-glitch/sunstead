@@ -74,6 +74,9 @@ function loadSnapshot(): Snapshot | null {
     if (!raw) return null
     const s = JSON.parse(raw) as Snapshot
     if (!s || typeof s.phase !== 'string') return null
+    // A half-finished analyze (Review with no result) can't resume on reload — the
+    // request is gone. Land on Connect instead of a spinner that never ends.
+    if (s.phase === 'plan' && !s.analyzed) s.phase = 'source'
     // A run that was mid-stream when the page reloaded can't be reattached (the
     // SSE POST is gone). Keep its progress, but stop any step from looking live
     // so we never imply it's still going — and never auto-restart it.
@@ -381,13 +384,20 @@ export default function App() {
                     <div className="sectlabel">Pick a project to migrate</div>
                     {projects.length ? (
                       <div className="projs">
-                        {projects.map((p) => (
-                          <button key={p.id} className="proj" disabled={busy || decorLeaving}
-                            onClick={() => { setProjectRef(p.id); proceed({ projectRef: p.id }) }}>
-                            <span><b>{p.name}</b><span className="projmeta">{p.region || p.id}</span></span>
-                            <ArrowRight size={15} />
-                          </button>
-                        ))}
+                        {projects.map((p) => {
+                          // Supabase pauses idle free projects; reading a paused DB times out
+                          // (~16s) instead of analyzing. Block selection and say why.
+                          const active = p.status === 'ACTIVE_HEALTHY'
+                          return (
+                            <button key={p.id} className={'proj' + (active ? '' : ' paused')}
+                              disabled={busy || decorLeaving || !active}
+                              title={active ? '' : 'Paused in Supabase — resume the project, then it can migrate.'}
+                              onClick={() => { if (!active) return; setProjectRef(p.id); proceed({ projectRef: p.id }) }}>
+                              <span><b>{p.name}</b><span className="projmeta">{active ? (p.region || p.id) : 'paused — resume in Supabase'}</span></span>
+                              <ArrowRight size={15} />
+                            </button>
+                          )
+                        })}
                       </div>
                     ) : (
                       <div className="hint">No projects on this account yet, or still loading… <a className="lnk" onClick={loadProjects}>refresh</a></div>
