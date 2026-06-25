@@ -6,7 +6,7 @@
 
 **Point Overmind at a Lovable/Supabase app — an agent swarm graduates its data, realtime and search onto Aiven, then an always-on CTO agent runs it for you.**
 
-[**Live demo**](https://toukkelipoukkeli-glitch.github.io/overmind-live/) · [**▶ Watch the demo**](docs/media/overmind-demo.mp4) · [**Quickstart**](#quickstart)
+[**Live demo**](https://toukkelipoukkeli-glitch.github.io/overmind-live/) · [**▶ Watch the demo**](docs/media/demo.mp4) · [**Quickstart**](#quickstart)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js&logoColor=white)
@@ -21,6 +21,14 @@
 </a>
 
 </div>
+
+---
+
+## Demo
+
+<video src="https://github.com/toukkelipoukkeli-glitch/sunstead/raw/main/overmind/docs/media/demo.mp4" controls muted playsinline width="100%"></video>
+
+> ▶︎ **[Watch the 50-second demo](docs/media/demo.mp4)** (if the player above doesn't load) — an agent crew migrates a Lovable/Supabase app onto Aiven: connect → migrate the database → open the PR.
 
 ---
 
