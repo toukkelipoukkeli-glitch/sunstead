@@ -31,6 +31,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Default target service we migrate INTO when a caller doesn't pass one. Source is overmind-pg. */
 export const TARGET_SERVICE = process.env.OVERMIND_TARGET_SERVICE || 'overmind-grad'
 
+/**
+ * A freshly-provisioned Aiven service reports RUNNING *before* its DNS/endpoint is actually
+ * reachable — so the first connection hits ENOTFOUND/ECONNREFUSED. Poll a trivial `select 1` until
+ * the target accepts connections (or timeout), so migrate never races the endpoint coming online.
+ */
+export async function waitConnectable(
+  connStr: string,
+  emit: (e: SwarmEvent) => void,
+  timeoutMs = 150_000,
+): Promise<boolean> {
+  const start = Date.now()
+  let last = ''
+  let announced = false
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await q(connStr, 'select 1')
+      return true
+    } catch (e) {
+      last = (e as Error)?.message ?? String(e)
+      if (!announced) {
+        emit({ type: 'log', level: 'info', msg: 'migrate: waiting for the fresh service endpoint to come online…' })
+        announced = true
+      }
+      await new Promise((r) => setTimeout(r, 5000))
+    }
+  }
+  emit({ type: 'log', level: 'warn', msg: `migrate: target not reachable after ${Math.round(timeoutMs / 1000)}s (${last.slice(0, 70)})` })
+  return false
+}
+
 /** Tables in FK-safe insert order. users ← posts ← reactions. */
 const TABLES = ['users', 'posts', 'reactions'] as const
 type Table = (typeof TABLES)[number]

@@ -31,6 +31,7 @@ import {
   copyData,
   verifyParity,
   sourceConn,
+  waitConnectable,
 } from './migrator.ts'
 import { importCsvSources, type CsvSource } from './csv-import.ts'
 import { openMigrationPR } from './pr.ts'
@@ -236,27 +237,39 @@ async function resolveTargetService(
   // Autonomous agent beat — provision the fresh service + Kafka topic. Real MCP receipts.
   const mcp = await tryImport('../aiven/mcp.ts')
   if (fresh && mcp?.runAivenAgent && hasAnthropic() && hasAivenToken()) {
-    try {
-      const prompt =
-        `You are the provisioning agent for Aiven project "${AIVEN_PROJECT}". Goal:\n` +
-        `1. Create a NEW PostgreSQL service named EXACTLY "${service}" with aiven_service_create ` +
-        `(service_type "pg", plan "startup-4", cloud "do-fra", pg version 17). This service does NOT ` +
-        `exist yet — create it; do not check first.\n` +
-        (needsKafka
-          ? `2. Ensure the Kafka topic "${topic}" exists on service "overmind-kafka": list topics with ` +
-            `aiven_kafka_topic_list and, only if it is missing, create it with aiven_kafka_topic_create ` +
-            `(partitions 1, replication 3).\n`
-          : '') +
-        `Then reply with one short line stating that ${service} was created` +
-        (needsKafka ? ` and the topic state.` : `.`)
-      const answer = await mcp.runAivenAgent(prompt, (r: Receipt) => emit({ type: 'receipt', receipt: r }))
-      emit({ type: 'log', level: 'info', msg: `provision: autonomous Aiven agent — ${answer || 'beat completed'}` })
-    } catch (e) {
-      emit({ type: 'log', level: 'info', msg: `provision: autonomous agent unavailable (${(e as Error).message}) — falling back to deterministic REST create` })
-      if (rest?.provision && hasAivenToken()) {
+    const prompt =
+      `You are the provisioning agent for Aiven project "${AIVEN_PROJECT}". Goal:\n` +
+      `1. Create a NEW PostgreSQL service named EXACTLY "${service}" with aiven_service_create ` +
+      `(service_type "pg", plan "startup-4", cloud "do-fra", pg version 17). This service does NOT ` +
+      `exist yet — create it; do not check first.\n` +
+      (needsKafka
+        ? `2. Ensure the Kafka topic "${topic}" exists on service "overmind-kafka": list topics with ` +
+          `aiven_kafka_topic_list and, only if it is missing, create it with aiven_kafka_topic_create ` +
+          `(partitions 1, replication 3).\n`
+        : '') +
+      `Then reply with one short line stating that ${service} was created` +
+      (needsKafka ? ` and the topic state.` : `.`)
+    // Retry the agent — the Anthropic stream occasionally drops ("Premature close"). We want the MCP
+    // AGENT to do the create (real mcp_tool_use receipts), not the deterministic fallback.
+    let agentDone = false
+    for (let attempt = 1; attempt <= 3 && !agentDone; attempt++) {
+      try {
+        const answer = await mcp.runAivenAgent(prompt, (r: Receipt) => emit({ type: 'receipt', receipt: r }))
+        emit({ type: 'log', level: 'info', msg: `provision: autonomous Aiven agent — ${answer || 'beat completed'}` })
+        agentDone = true
+      } catch (e) {
+        emit({ type: 'log', level: 'info', msg: `provision: agent attempt ${attempt}/3 failed (${(e as Error).message})` })
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 2500))
+      }
+    }
+    // Safety net: whatever the agent reported, make sure the service actually exists. Only if it
+    // doesn't (agent flaked all 3 tries) do we create it deterministically via REST.
+    if (rest?.getService && rest?.provision && hasAivenToken()) {
+      const exists = await rest.getService(AIVEN_PROJECT, service).catch(() => null)
+      if (!exists) {
         try {
           await rest.provision(AIVEN_PROJECT, 'pg', 'startup-4', 'do-fra', service, { pg_version: '17' })
-          emitReceipt(emit, 'aiven_service_create', `Provisioned fresh pg "${service}"`)
+          emitReceipt(emit, 'aiven_service_create', `Provisioned fresh pg "${service}" (deterministic fallback)`)
         } catch (ce: any) {
           emit({ type: 'log', level: 'warn', msg: `provision: REST create ${service} failed (${ce?.message ?? ce})` })
         }
@@ -509,6 +522,14 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void, o
     if (!state.targetConn) {
       emit({ type: 'log', level: 'warn', msg: `migrate: could not resolve ${svc} credentials — skipping data copy` })
       emitAgent(emit, 'migrator', 'error', 'target credentials unavailable')
+      return
+    }
+
+    // A fresh service reports RUNNING before its endpoint resolves — wait until it actually accepts
+    // connections so the first schema/copy doesn't hit ENOTFOUND on the brand-new host.
+    if (!(await waitConnectable(state.targetConn, emit))) {
+      emit({ type: 'log', level: 'warn', msg: `migrate: ${svc} not reachable yet — skipping data copy` })
+      emitAgent(emit, 'migrator', 'error', 'target not reachable')
       return
     }
 
