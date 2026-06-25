@@ -5,8 +5,8 @@ Date: 2026-06-25
 Source inputs read:
 
 - `plans/AIVEN_BEHAVIOR_MIGRATION_ANALYSIS.md`
-- `AGENTIC_DATABASE_MIGRATION_MARKET_SCAN.md`
-- `LOVABLE_SUPABASE_TO_POSTGRES_MIGRATION_GUIDE.md`
+- `migration-info/AGENTIC_DATABASE_MIGRATION_MARKET_SCAN.md`
+- `migration-info/LOVABLE_SUPABASE_TO_POSTGRES_MIGRATION_GUIDE.md`
 
 ## Hackathon Frame
 
@@ -14,7 +14,7 @@ Source inputs read:
 - Primary scoring mode: technical/product hybrid, sponsor fit first.
 - Judging/submission mode: Aiven partner challenge; short live demo and 4-minute pitch if selected.
 - Chosen track: Aiven main challenge, "The Autonomous Data Operator."
-- Core demo flow: user grants repo/source/Aiven access -> clicks one button -> Aiden scans the Lovable/Supabase app -> creates or verifies an Aiven shadow data plane -> migrates representative Postgres data -> validates it -> rewrites one realtime behavior to Aiven Kafka -> produces a scoped cutover package.
+- Core demo flow: user grants repo/source/Aiven access -> clicks one button -> Aiden scans the Lovable/Supabase app -> creates or verifies an Aiven shadow data plane -> migrates representative Postgres data -> validates it -> maps browser-critical realtime behavior to Aiven Postgres `app_events` plus browser polling -> validates Aiven Kafka as the agent bus / production event path -> produces a scoped cutover package.
 - Intentionally cut: production auth migration, production storage migration, full CDC, all source platforms, broad schema-conversion tooling, and a fully autonomous production cutover without review.
 
 ## Executive Take
@@ -41,7 +41,10 @@ Lovable UI -> Supabase client -> Supabase Postgres/Auth/Storage/Realtime
 
 After scoped migration:
 Lovable UI -> Aiden generated backend adapter -> Aiven Postgres
-                                              -> Aiven Kafka for realtime/events
+                                              -> Aiven Postgres app_events for demo realtime
+
+Agent/prod event path proof:
+Aiden agents -> Aiven Kafka migration.events
 
 Still explicit:
 Auth: adapter required for production
@@ -71,7 +74,7 @@ The required access grant is the setup step:
 | Lovable Cloud export access | CSV/schema fallback if direct DB URL is unavailable | Export tables/files/config; no direct DB assumed |
 | Aiven account/project access | Verify or create target Postgres/Kafka | Scoped Aiven token or MCP connection for selected project |
 | Aiven Postgres connection | Restore data, write receipts, validate target | Target DB owner/admin for migration schema |
-| Aiven Kafka access | Realtime rewrite proof | Topic create, produce, consume/list for migration topics |
+| Aiven Kafka access | Agent bus and production event-path proof | Topic create, produce, consume/list for `migration.events` |
 | Optional auth provider credentials | Production auth replacement | Out of scope for demo; adapter plan only |
 | Optional object store credentials | Production storage replacement | Out of scope for demo; adapter plan only |
 
@@ -179,7 +182,7 @@ Some things cannot be discovered safely. The user must provide or approve them.
 | Aiven account/project authorization | The agent needs a target project to create/verify Postgres/Kafka | No |
 | Aiven Postgres target or permission to create one | The agent needs a migration destination | Partially, if an existing service is visible |
 | Permission to write to target Postgres | Needed for schema/data/receipt writes | No |
-| Permission to create/use Kafka topics if realtime rewrite is included | Needed for the Kafka proof path | No |
+| Permission to create/use Kafka topics if Kafka proof is included | Needed for the agent-bus / production event-path proof | No |
 | Cutover approval | Switching runtime paths can affect production users | No, must be explicit |
 
 ### Required only for specific features
@@ -328,7 +331,9 @@ Output:
 
 ```text
 Detected:
-- Tables: posts, reactions, profiles
+- Tables: posts, reactions
+- Auth/user dependency: yes
+- Target event bridge: app_events
 - Supabase Auth: yes
 - Supabase Storage: yes
 - Supabase Realtime: yes
@@ -362,7 +367,7 @@ Output:
 | RLS using `auth.uid()` | Review required | Auth adapter/back-end authorization |
 | Supabase Auth | Adapter required | v2 / production adapter |
 | Supabase Storage | External replacement | object store adapter |
-| Supabase Realtime | Rewrite | Aiven Kafka + backend SSE/WebSocket |
+| Supabase Realtime | Rewrite | Demo: Aiven Postgres `app_events` + browser polling; production event path: Aiven Kafka |
 | Supabase client `.from()` | Rewrite | backend API adapter |
 
 ### 3. Aiven Shadow Plane
@@ -394,7 +399,6 @@ aiven_pg_write migration_runs
 aiven_pg_write mcp_receipts
 aiven_kafka_topic_list
 aiven_kafka_topic_create migration.events
-aiven_kafka_topic_create app.outbox.posts
 ```
 
 Output:
@@ -443,8 +447,8 @@ Output:
 ```text
 posts        40/40 rows validated
 reactions    60/60 rows validated
-profiles     12/12 rows validated
-events        8/8 rows validated
+demo_users   12/12 rows validated
+app_events    8/8 rows validated
 ```
 
 ### 5. Behavior Adaptation
@@ -455,7 +459,8 @@ Actions:
 
 - generate backend API adapter for `.from()` reads/writes;
 - generate a code diff that stops the frontend from using direct Supabase data calls;
-- generate a realtime rewrite from `supabase.channel()` to Aiven Kafka-backed events;
+- generate a realtime rewrite from `supabase.channel()` to the demo-safe Aiven Postgres `app_events` bridge;
+- validate Aiven Kafka separately as the agent bus and production event-bus path;
 - create auth and storage adapter plans without pretending they are finished;
 - identify RLS policies that depend on Supabase auth context.
 
@@ -470,15 +475,19 @@ Old:
 supabase.channel("total-hypes")
 
 New:
-EventSource("/api/events")
-  backed by Aiven Kafka topic app.outbox.posts
+poll("/api/events/recent")
+  backed by Aiven Postgres table app_events
+
+Production event path:
+Aiden agents publish workflow/prod-path proof events to Aiven Kafka migration.events
 ```
 
 The generated backend adapter owns the Aiven database connection:
 
 ```text
 Browser -> /api/posts -> Aiven Postgres
-Browser -> /api/events -> Kafka bridge -> Aiven Kafka
+Browser -> /api/events -> Aiven Postgres app_events
+Agents  -> migration.events -> Aiven Kafka
 ```
 
 This is mandatory. The Aiven Postgres URL must never go into `VITE_*` frontend variables.
@@ -493,7 +502,7 @@ Actions:
 - run smoke queries;
 - verify extensions;
 - validate generated API route against target data;
-- produce and consume/list Kafka event;
+- produce and consume/list a Kafka agent-bus proof event;
 - run frontend smoke test if available;
 - capture errors;
 - let agents patch generated SQL/adapter code within bounded limits;
@@ -530,7 +539,8 @@ Actions:
 - update frontend to call the backend adapter;
 - remove runtime use of `VITE_SUPABASE_URL` on the demo path;
 - switch backend `DATABASE_URL` to Aiven Postgres;
-- switch event path to Aiven Kafka bridge;
+- switch demo event path to the Aiven Postgres `app_events` bridge;
+- keep Aiven Kafka live as the agent bus / production event-path proof;
 - keep rollback instructions.
 
 Agent role:
@@ -572,8 +582,8 @@ Migration Complete For Demo Path
 
 Tables shadowed: 4/4
 Rows validated: 120/120
-Realtime mapped: Supabase channel -> Aiven Kafka
-Kafka event roundtrip: passed
+Demo realtime mapped: Supabase channel -> Aiven Postgres app_events -> browser polling
+Kafka agent-bus roundtrip: passed
 Aiven MCP actions: 12
 Supabase runtime dependency: removed from demo path
 
@@ -687,15 +697,14 @@ Tables:
 
 Roles:
 
-- migration event stream;
-- audit/event rail;
-- Supabase Realtime replacement proof.
+- agent coordination bus;
+- migration/audit event rail;
+- production event-bus proof.
 
 Topics:
 
 - `migration.events`
 - `migration.audit`
-- `app.outbox.posts`
 
 ## Minimum Demo Implementation
 
@@ -708,8 +717,8 @@ Build the smallest version that proves the product:
 5. Create receipt tables in Aiven Postgres.
 6. Apply/migrate representative data to Aiven Postgres.
 7. Validate row counts and smoke query.
-8. Create Kafka topic and roundtrip one event.
-9. Generate or show a real diff for realtime adapter.
+8. Create Kafka `migration.events` topic and roundtrip one agent-bus event.
+9. Generate or show a real diff for the Postgres `app_events` realtime adapter.
 10. Cut over the demo runtime to the backend adapter.
 11. Produce final proof report.
 
@@ -753,7 +762,8 @@ Primary status after demo cutover:
 
 ```text
 Supabase removed from demo runtime
-Aiven Postgres/Kafka validated
+Aiven Postgres runtime validated
+Aiven Kafka agent bus validated
 ```
 
 ## Why This Wins Against Generic Migration Tools
@@ -761,7 +771,7 @@ Aiven Postgres/Kafka validated
 The market scan says broad agentic migration is crowded and hard. Aiden should be narrower:
 
 - one source story: Lovable/Supabase apps;
-- one target story: Aiven Postgres plus Kafka where needed;
+- one target story: Aiven Postgres for the scoped runtime plus Kafka for the agent bus / production event path;
 - one visible workflow: shadow migrate, validate, rewrite realtime, cut over scoped runtime;
 - one proof package: row counts, smoke queries, receipts, blockers, rollback.
 
@@ -780,7 +790,7 @@ apps/control-room
   UI for one-click run, timeline, behavior graph, receipts, report
 
 apps/aiden-api
-  Fastify API, SSE timeline, state machine, credential probes
+  Fastify API, run-event stream, state machine, credential probes
 
 packages/migration-core
   repo scanner, behavior classifier, readiness scoring

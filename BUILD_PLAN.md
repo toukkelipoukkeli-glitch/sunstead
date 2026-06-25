@@ -8,8 +8,9 @@ enabled** for us.
 ## Difficulty verdict (read first)
 
 - **Migrate the data plane** (Aiven Postgres + pgvector + copy data): **🟢 easy** — hours, all real MCP.
-- **Realtime → Kafka, actually updating the live app**: **🟡 the real build** — ~half a day, and it's
-  the hero *and* the riskiest "works live on stage" piece (see hard truth #2).
+- **Realtime → Aiven Postgres events, actually updating the live app**: **🟢/🟡 buildable** — the
+  browser-critical path stays simple and reliable.
+- **Kafka agent bus proof**: **🟢 easy** — one topic, produce/list events, visible in the control room.
 - **Cost card + CTO recs** (read Aiven metrics over MCP): **🟢 easy** — hours.
 - **Auth + Storage + data-API fully working with ZERO Supabase**: **🔴 the long pole** — ~a week, see below.
 
@@ -27,11 +28,11 @@ means hosting that glue **off Aiven** (Fly/Render/a VM) or **rewriting the app**
 directly. Either way the BaaS layer isn't on Aiven, which dilutes the "100% Aiven" line. Aiven holds
 the **data plane** (Postgres + Kafka); that's the honest claim.
 
-**2. Browsers can't speak Kafka.** The "realtime → Kafka" hero needs a **Kafka → SSE/WebSocket
-bridge**: a server that consumes the Kafka topic and pushes to the browser. Good news — live-hype-wall
-is a **TanStack Start** app with its own server runtime, so the bridge lives in the app's server (a
-Kafka consumer + an SSE route; the client swaps `supabase.channel(...)` for an `EventSource`). That's
-buildable, but it *is* the real work behind the hero beat — not a config flag.
+**2. Browsers can't speak Kafka.** Do not put Kafka on the browser-critical path for the hackathon.
+The demo-safe realtime path should be **Aiven Postgres `app_events` -> browser polling**.
+Kafka remains a sponsor-visible proof path: agents publish migration events to Aiven Kafka
+`migration.events`, and the UI reads/lists them as the agent bus. This preserves Aiven Kafka depth
+without making the stage demo depend on a Kafka consumer bridge.
 
 ## What to build (ordered, hardest-risk-first)
 
@@ -40,25 +41,26 @@ buildable, but it *is* the real work behind the hero beat — not a config flag.
 | 1 | Aiven Postgres + Kafka provisioned | `aiven_service_create` via MCP; confirm `vector` ext | 🟢 ~done (verified) | ✅ |
 | 2 | Schema → Aiven PG | take repo migrations, strip Supabase-isms (auth.*, storage.*, `supabase_realtime`, `pg_net` trigger, `auth.uid()` RLS); apply tables + indexes + `match_posts` via `aiven_pg_write` | 🟢 2–3h | ✅ |
 | 3 | Data + embeddings → Aiven PG | read source rows (service_role) → `aiven_pg_write` / COPY | 🟢 2–3h | ✅ |
-| 4 | **Kafka → SSE bridge** (the hero) | Aiven PG emits post/reaction events to a Kafka topic (`aiven_kafka_topic_create` + producer); TanStack server consumes + SSE; client swaps `supabase.channel` → `EventSource` | 🟡 ~½ day | ✅ |
-| 5 | App reads on Aiven | thin server route for the wall/leaderboard/search hitting Aiven PG (incl. `match_posts`) | 🟡 ~½ day | ✅ |
-| 6 | Cost card | live Aiven pricing (reuse `ideas/architecture-advisor`) → Supabase $ vs Aiven $ | 🟢 2–3h | ✅ |
-| 7 | CTO recs | read `aiven_service_metrics_fetch` → 1–2 real recommendations | 🟢 2–3h | ✅ |
-| 8 | Auth fully working | run GoTrue off-Aiven **or** rewrite app auth | 🔴 1–2 days | ✗ flag |
-| 9 | Storage fully working | S3/MinIO + rewrite image URLs | 🟡 ~1 day | ✗ flag |
-| 10 | Embed fn | point at OpenAI/Voyage; host off-Aiven (Aiven App when enabled) | 🟡 ~½ day | ◑ optional |
+| 4 | **Postgres events → browser polling bridge** (the hero) | `POST /api/reactions` inserts reaction + `app_events` row in Aiven PG; `/api/events/recent` polls that table; client swaps `supabase.channel` → polling | 🟢 ~2–4h | ✅ |
+| 5 | **Kafka agent bus proof** | `migration.events` topic through Aiven MCP; produce/list workflow events in the control room | 🟢 1–2h | ✅ |
+| 6 | App reads on Aiven | thin server route for the wall/leaderboard/search hitting Aiven PG (incl. `match_posts`) | 🟡 ~½ day | ✅ |
+| 7 | Cost card | live Aiven pricing (reuse `ideas/architecture-advisor`) → Supabase $ vs Aiven $ | 🟢 2–3h | ✅ |
+| 8 | CTO recs | read `aiven_service_metrics_fetch` → 1–2 real recommendations | 🟢 2–3h | ✅ |
+| 9 | Auth fully working | run GoTrue off-Aiven **or** rewrite app auth | 🔴 1–2 days | ✗ flag |
+| 10 | Storage fully working | S3/MinIO + rewrite image URLs | 🟡 ~1 day | ✗ flag |
+| 11 | Embed fn | point at OpenAI/Voyage; host off-Aiven (Aiven App when enabled) | 🟡 ~½ day | ◑ optional |
 
 ## The cut line for the demo (~1 day)
 
-**In (genuinely working, not faked):** data plane fully on Aiven (#1–3), the **Kafka→SSE bridge so
-the real wall updates live off Kafka** (#4–5), the **cost card** (#6) and **CTO recs** (#7), with the
-rewired app booting against Aiven. **Flagged honestly:** auth + storage (#8–9) — classified, with a
-generated adapter plan, no live surgery. That is "the Lovable migration working" for the core loop,
-and every number is real.
+**In (genuinely working, not faked):** data plane fully on Aiven (#1–3), the **Postgres
+events→browser polling bridge so the real wall updates live off Aiven Postgres** (#4), the **Kafka agent
+bus proof** (#5), the **cost card** (#7) and **CTO recs** (#8), with the rewired app booting against
+Aiven. **Flagged honestly:** auth + storage (#9–10) — classified, with a generated adapter plan, no
+live surgery. That is "the Lovable migration working" for the core loop, and every number is real.
 
-**Build order = de-risk #4 first** (right after the spine). The Kafka→browser bridge is the only
-piece that can quietly not-work on stage; build and rehearse it before polishing anything else. Keep
-a **recorded fallback** of the live migration + the Kafka hop.
+**Build order = de-risk #4 first** (right after the spine). The browser update must work reliably on
+stage, so make it Postgres-backed and rehearse it before polishing anything else. Keep a **recorded
+fallback** of the live migration + the Kafka agent-bus proof.
 
 ## What "fully working, zero Supabase, any app" needs later (the product)
 

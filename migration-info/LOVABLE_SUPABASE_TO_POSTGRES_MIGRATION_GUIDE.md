@@ -4,13 +4,11 @@ Research date: June 2026
 
 Scope: **Lovable or Lovable-style app using Supabase -> Aiven for PostgreSQL**.
 
-This guide intentionally does not analyze every possible target. The relevant production destination for this project is **Aiven for PostgreSQL**, with optional Aiven Kafka for realtime/event behavior. The core question is:
+This guide records mechanics and source facts for moving a Lovable/Supabase-style app's Postgres data plane to Aiven for PostgreSQL.
 
-> If a Lovable-built app started on Supabase, what is the proven migration flow to get its data plane onto Aiven Postgres?
+## Migration Flow
 
-## Executive summary
-
-The proven database migration path is:
+Common database migration path:
 
 ```text
 Identify backend ownership
@@ -29,12 +27,6 @@ The important distinction:
 - **Tables, indexes, constraints, functions, triggers, and many extensions** can usually migrate to Aiven Postgres.
 - **Supabase Auth, Storage, Realtime, Edge Functions, client SDK behavior, and RLS auth context** do not become Aiven Postgres features automatically.
 
-That means the best product framing is not "one-click Supabase replacement." It is:
-
-> Move the Postgres data plane to Aiven, prove it, then map each Supabase behavior to direct migration, adapter, rewrite, or blocker.
-
-For the hackathon demo, this is exactly the right shape: Aiven Postgres carries migrated data and receipts; Aiven Kafka can carry the realtime rewrite proof; Auth and Storage are honestly flagged as adapter-required.
-
 ## What Lovable changes about the migration
 
 Lovable can produce apps backed by either:
@@ -48,7 +40,7 @@ Before doing anything else, identify which one you have. Supabase's Lovable trou
 
 Lovable documents GitHub integration for syncing/exporting project code, which matters because the repo is the artifact you will scan and modify during migration.[^lovable-github] Lovable's external hosting docs also describe migration-related work such as moving data, storage, and configuration out of Lovable Cloud.[^lovable-external]
 
-## The best proven flow for this product
+## Migration Mechanics
 
 ### Phase 1: export and inspect the app
 
@@ -65,17 +57,15 @@ Classify the findings:
 | `supabase.from("table")` | Data access must move behind a backend API using Aiven Postgres credentials. |
 | SQL migrations under `supabase/migrations` | Strong source for target schema. |
 | RLS policies | May restore as SQL, but policies depending on Supabase Auth need review. |
-| `supabase.auth` | Not solved by Aiven Postgres. Use an auth adapter or bypass only in demo path. |
+| `supabase.auth` | Not solved by Aiven Postgres. Requires a separate auth architecture. |
 | `supabase.storage` | Not solved by Aiven Postgres. Move objects to object storage later. |
-| `supabase.channel` / Postgres Changes | Rewrite to Aiven Kafka, WebSocket/SSE, polling, or another event path. |
+| `supabase.channel` / Postgres Changes | Browser-facing Supabase Realtime API does not exist in plain Aiven Postgres; requires another event path. |
 | `supabase.rpc` | SQL functions may move; frontend `.rpc()` calls need a backend route or adapter. |
 | Edge Functions | Move to an API server, worker, or later Aiven Apps if available. |
 
-This scan is the first "behavior migration" step. It tells you what can be directly moved to Aiven Postgres and what needs app work.
-
 ### Phase 2: create or verify Aiven Postgres
 
-For a real migration, create an Aiven for PostgreSQL service in the right region and plan. For the hackathon demo, pre-provision it and use "create or verify" so the live path is reliable.
+Create an Aiven for PostgreSQL service in the right region and plan, or verify an existing service.
 
 You need:
 
@@ -85,7 +75,7 @@ You need:
 - Target user with privileges to create schema, extensions, and tables;
 - Required extensions enabled or available.
 
-For this product, also create a receipt/proof schema in Aiven Postgres:
+Reference receipt/proof schema used by Aiden planning docs:
 
 ```sql
 create table if not exists migration_runs (
@@ -118,8 +108,6 @@ create table if not exists validation_checks (
   created_at timestamptz not null default now()
 );
 ```
-
-Those receipt tables are not required for a normal migration, but they are essential to the Aiven sponsor demo because they make autonomous actions inspectable.
 
 ### Phase 3: dump Supabase schema and data
 
@@ -182,7 +170,7 @@ If it uses pgvector:
 create extension if not exists vector;
 ```
 
-Supabase's restore docs warn to check Postgres version and extension compatibility before restoring.[^supabase-self-host-restore] For Aiven, this should be a visible agent step: the operator checks available extensions, enables the needed ones, and records a receipt.
+Supabase's restore docs warn to check Postgres version and extension compatibility before restoring.[^supabase-self-host-restore]
 
 ### Phase 5: restore into Aiven Postgres
 
@@ -206,7 +194,7 @@ Aiven documents standard `pg_dump`/`pg_restore` migration into Aiven for Postgre
 
 For larger production migrations, use Aiven's `aiven-db-migrate`, which supports logical replication and dump/restore, with logical replication as the default strategy when possible.[^aiven-db-migrate] PostgreSQL logical replication uses publication/subscription semantics and is the right mental model for lower-downtime migrations.[^postgres-logical-replication]
 
-For this hackathon demo, do not overbuild that path. Use a small deterministic shadow migration:
+Minimal shadow migration pattern:
 
 ```text
 source rows -> target rows -> row-count checks -> smoke query -> receipt
@@ -245,7 +233,7 @@ Also validate:
 - app backend can connect over TLS;
 - no browser bundle contains the Aiven Postgres URL.
 
-For the product UI, the output should look like:
+Example validation output:
 
 ```text
 posts        40/40 rows validated
@@ -311,10 +299,9 @@ Supabase Auth integrates with Postgres authorization and RLS using JWT claims an
 
 For the Aiven migration:
 
-- direct-migrate simple policies only after review;
-- flag `auth.uid()` policies as auth-adapter-required;
-- for the demo, use a seeded/local user and bypass production auth migration;
-- for production, use a backend auth provider and enforce authorization server-side, or recreate a compatible JWT/RLS strategy deliberately.
+- simple policies can restore as SQL, but still require semantic review;
+- `auth.uid()` policies require a replacement auth context or server-side authorization;
+- seeded/local users do not prove production auth migration.
 
 ### Storage
 
@@ -322,62 +309,50 @@ Supabase Storage object bytes are not just rows in Postgres. Supabase's backup d
 
 For the Aiven Postgres scope:
 
-- migrate storage metadata only if it is useful;
-- keep public/static image URLs for the demo;
-- flag production storage as external object-store adapter work;
-- do not claim Aiven Postgres replaces Supabase Storage.
+- storage metadata can exist in Postgres without object bytes;
+- object bytes require a separate object-store migration;
+- Aiven Postgres does not replace Supabase Storage.
 
 ### Realtime
 
 Supabase Realtime supports Postgres Changes, Broadcast, and Presence. Postgres Changes depend on publication/replication configuration for relevant tables.[^supabase-realtime-postgres] Plain Aiven Postgres does not provide the same browser-facing Supabase Realtime API.
 
-For the Aiven demo, the strongest rewrite is:
+Replacement patterns include:
 
 ```text
 Supabase Realtime channel
   -> detected in frontend code
   -> classified as realtime behavior
-  -> mapped to Aiven Kafka topic
-  -> event produced and consumed
-  -> backend adapter exposes SSE/WebSocket to the app
+  -> mapped to another event path
+  -> backend adapter exposes polling, SSE, WebSocket, or another browser delivery mechanism
 ```
 
-This is where optional **Aiven Kafka** matters. The data target remains Aiven Postgres, but the realtime behavior needs an event system.
+Potential event-path building blocks:
+
+- Aiven Postgres events/outbox table.
+- Aiven Kafka topic.
+- Backend polling endpoint.
+- Backend SSE endpoint.
+- Backend WebSocket endpoint.
 
 ### Edge Functions and RPC
 
 Supabase Edge Functions are server-side TypeScript functions running on Deno.[^supabase-edge-functions] SQL functions can migrate to Aiven Postgres if they are standard Postgres functions. Calls like `supabase.rpc()` or `functions.invoke()` need a backend API route or worker replacement.
 
-For the demo:
-
-- classify SQL functions;
-- show one generated backend route or adapter plan;
-- do not build a full Edge Functions migration.
-
 ## Cutover options for Aiven Postgres
 
 | Strategy | Use when | Notes |
 | --- | --- | --- |
-| Cold cutover | Small app or demo | Pause writes, dump, restore, validate, switch env/API |
-| Shadow migration | Best demo path | Source stays live; Aiven target is validated beside it |
+| Cold cutover | Small app or short downtime window | Pause writes, dump, restore, validate, switch env/API |
+| Shadow migration | Need target validation while source stays live | Source stays live; Aiven target is validated beside it |
 | Logical replication | Larger production migration | Use Aiven migration tooling or Postgres logical replication |
 | Dual-write | Advanced production migration | Higher app complexity, useful only when downtime is unacceptable |
 
 Aiven's `pg_dump`/`pg_restore` guide notes that writes after the dump begins are not included, so writes should be disabled during final dump if using that path.[^aiven-pgdump]
 
-For our product, the winning demo is shadow migration:
-
-```text
-Supabase app still live
-  -> Aiven Postgres shadow data plane validated
-  -> realtime behavior mapped to Kafka
-  -> scoped demo runtime cuts over to Aiven backend adapter
-  -> Supabase removed from the visible happy path
-```
-
 ## Aiven-specific proof package
 
-The migration report should show proof, not just claims:
+Example migration report fields:
 
 ```text
 Target: Aiven for PostgreSQL
@@ -395,8 +370,8 @@ Needs adapter:
 - Storage
 - RLS policies depending on auth.uid()
 
-Optional rewrite:
-- Supabase Realtime -> Aiven Kafka outbox/events
+Realtime replacement:
+- event path selected separately from data migration
 
 Rollback:
 - Restore old frontend env/API target
@@ -404,7 +379,7 @@ Rollback:
 - Drop Aiven shadow schema after rollback window
 ```
 
-For sponsor scoring, make the Aiven actions visible:
+Example Aiven action log:
 
 ```text
 aiven_service_get postgres                 ok
@@ -415,10 +390,10 @@ aiven_pg_read validation_counts            ok
 aiven_pg_write mcp_receipts                ok
 ```
 
-If Kafka is included:
+Example Kafka action log:
 
 ```text
-aiven_kafka_topic_create app.outbox.posts  ok
+aiven_kafka_topic_create migration.events  ok
 aiven_kafka_topic_message_produce          ok
 aiven_kafka_topic_message_list             ok
 validation.check.passed kafka_roundtrip    ok
@@ -449,38 +424,6 @@ Do not put `DATABASE_URL`, `AIVEN_POSTGRES_URL`, or a Postgres password in `VITE
 ### Calling the migration complete after row counts only
 
 Row counts prove data copy. They do not prove auth, storage, realtime, or edge behavior.
-
-## Recommended implementation for Aiden
-
-Build the product around this sequence:
-
-1. **Analyze app.**
-   Scan the Lovable/Supabase repo and migrations.
-
-2. **Build behavior graph.**
-   Classify data, RLS, auth, storage, realtime, RPC, edge functions.
-
-3. **Create Aiven shadow plane.**
-   Verify Aiven Postgres, create receipt tables, check extensions.
-
-4. **Run shadow migration.**
-   Apply schema/sample data to Aiven Postgres.
-
-5. **Validate.**
-   Row counts, smoke queries, extension checks, receipt writes.
-
-6. **Rewrite one behavior.**
-   Supabase Realtime -> Aiven Kafka outbox/event stream.
-
-7. **Commit scoped demo cutover.**
-   Frontend uses backend adapter; backend uses Aiven Postgres; Supabase client path is unused.
-
-8. **Report.**
-   Show readiness, proof, blockers, rollback.
-
-That is the credible product:
-
-> Aiden does not pretend Aiven Postgres is Supabase. It moves the Postgres data plane to Aiven, proves it, rewrites the behavior that should become event-driven, and flags the rest honestly.
 
 ## Command crib sheet
 

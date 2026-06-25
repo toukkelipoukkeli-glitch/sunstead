@@ -1,119 +1,115 @@
 # STATUS — where we are (2026-06-25)
 
-Quick orientation. Full spec in [idea.md](idea.md); judge profiles + talking points in
-[judges.md](judges.md). This file = "what we have / what we're building / what's next."
+Quick orientation. Full product spec in [idea.md](idea.md), demo script in
+[DEMO_FLOW.md](DEMO_FLOW.md), judge profiles in [judges.md](judges.md), and the build architecture
+in [plans/ONE_CLICK_AIVEN_BEHAVIOR_MIGRATION_AGENT_ARCHITECTURE.md](plans/ONE_CLICK_AIVEN_BEHAVIOR_MIGRATION_AGENT_ARCHITECTURE.md).
 
-## What we're building (one line)
+## Hackathon frame
 
-**Lovable → Aiven behavior migrator + "Aiven, your CTO" agent.** When a vibe-coded Lovable
-<<<<<<< HEAD
-app blows up, an agent graduates its data plane off Supabase onto Aiven — migrates the data,
-**rewrites realtime behavior to Aiven Kafka**, and rewires the app onto Aiven's data plane so
-Supabase is deleted from the stack, verifies the cutover, and then stays
-on as a CTO agent that watches the app and says what to do next. Aiven challenge = agentic
-workflows on Aiven infra via the **Aiven MCP**.
-=======
-app blows up, an agent graduates its data plane off Supabase onto Aiven — first by building a safe
-shadow plane, then by cutting over the scoped demo runtime so **Supabase is gone**. It migrates the
-data, **rewrites realtime behavior to Aiven Kafka**, deploys or runs the replacement backend glue,
-verifies the cutover, and then stays on as a CTO agent. Aiven challenge = agentic workflows on
-Aiven infra via the **Aiven MCP**.
->>>>>>> 3130a80 (docs: define Aiven demo flow)
+- Type: `sponsor-needs`.
+- Scoring mode: technical/product hybrid, sponsor fit first.
+- Judging mode: Aiven partner challenge; short live demo and 4-minute pitch if selected.
+- Track: Aiven main challenge, "The Autonomous Data Operator."
+- Core demo: PulseWall starts on Lovable/Supabase -> Aiden scans behavior -> creates an Aiven
+  shadow data plane through MCP -> migrates/validates representative data -> rewrites realtime to
+  Aiven Postgres `app_events` for the browser-critical path -> validates Aiven Kafka as the
+  agent bus / production event path -> cuts over the scoped demo runtime so Supabase is gone from
+  the visible app path.
+- Cut: production auth migration, production storage migration, full CDC, all source platforms,
+  broad schema-conversion tooling, and fully autonomous production cutover.
+
+## What we're building
+
+**Lovable -> Aiven behavior migrator + "Aiven, your CTO" agent.** When a vibe-coded Lovable app
+blows up, Aiden graduates its data plane off Supabase onto Aiven. It follows the proven
+Supabase/Postgres migration path, builds an Aiven shadow plane, rewrites browser-critical realtime
+behavior to Aiven Postgres events, validates Aiven Kafka as the agent bus / production event path,
+verifies everything with receipts, and cuts over the scoped demo runtime so Supabase is removed from
+the path judges see.
 
 ## Locked decisions
 
-- **Behavior migration, not just data migration.** The agent builds a *behavior graph* and
-  classifies every Supabase feature: direct-migrate / rewrite / adapter / external / flag.
-<<<<<<< HEAD
-- **Delete Supabase by moving the data plane — not by hosting on Aiven.** ⚠️ UPDATED ~00:30:
-  **Aiven Apps deploy is LA and our account isn't enabled** (verified live via MCP). So the rewired
-  app runs against Aiven directly (Postgres + Kafka) and Supabase is still fully removed. Hosting the
-  glue *on* Aiven Apps is the named next step — MCP path proven (`aiven_application_deploy`), just
-  needs access. One-up line still holds: Aiven's own Lovable integration routes through a Supabase
-  Edge Function; our migrated app doesn't touch Supabase at all.
-=======
-- **Shadow migration first, then full demo deletion.** The demo starts safely: create and validate
-  an Aiven Postgres + Kafka shadow data plane with receipts. After proof, the controlled demo path
-  cuts over so the app no longer depends on Supabase at runtime.
-- **Actually deploy if access works.** We deploy the rewritten glue as an **Aiven App** via MCP if
-  access is available. If access fails, the fallback is the same generated adapter path plus a
-  recorded deploy/proof package, but the demo still shows Supabase removed from the runtime path.
->>>>>>> 3130a80 (docs: define Aiven demo flow)
-- **MCP is the control plane, not the bulk pipe.** Bulk copy uses `aiven-db-migrate` /
-  `pg_dump`; MCP does provisioning, inspection, schema/metadata, Kafka topics+events,
-  validation reads, and receipts.
-- **Demo app = "PulseWall"** (a live event reaction wall — see below). Full demo script:
-  [DEMO_FLOW.md](DEMO_FLOW.md).
+- **Behavior migration, not just data migration.** The agent builds a behavior graph and classifies
+  Supabase features: direct migrate / Kafka rewrite / adapter required / review required / cut.
+- **Use proven migration primitives.** For production, Aiden should orchestrate `supabase db dump`,
+  `pg_dump`/`psql`, or `aiven-db-migrate`. For the hackathon demo, migrate representative
+  PulseWall rows and prove counts/smoke queries.
+- **MCP is the control plane, not the bulk pipe.** Aiven MCP is used for service inspection,
+  receipt writes, Kafka topics/events, validation reads, and judge-visible proof.
+- **Delete Supabase by moving the scoped runtime path.** Aiven Apps is not required. The rewired app
+  talks to Aiven Postgres through backend glue, uses Aiven Postgres `app_events` for demo realtime,
+  and shows Aiven Kafka as the agent bus / production event path; auth/storage/RLS are production
+  blockers, not demo blockers.
+- **Use Claude Agent SDK only for bounded agent work.** Claude explains, classifies, and generates
+  report/diff text. Typed code executes migration, validation, Kafka, and cutover steps.
+- **Demo app = PulseWall.** Full demo script: [DEMO_FLOW.md](DEMO_FLOW.md).
 
-## The demo app: PulseWall
+## Current assets
 
-✅ **Built & runs** — Vite + React + Supabase app in [demo/pulsewall/](demo/pulsewall/) (clean
-production build, UI renders). Schema in `supabase/migrations/0001_init.sql` (matches the seed),
-embedding edge function in `supabase/functions/embed/`. Setup steps in its README. Still TODO:
-point it at a real Supabase project, deploy the edge function, run the seed.
+- **PulseWall exists.** Vite + React + Supabase app in [demo/pulsewall/](demo/pulsewall/). It has
+  Supabase Auth, Storage, Realtime, RPC/Edge Function calls, RLS, and pgvector so the scanner can
+  find real behavior.
+- **Schema exists.** PulseWall schema is in
+  [demo/pulsewall/supabase/migrations/0001_init.sql](demo/pulsewall/supabase/migrations/0001_init.sql).
+- **Seed exists.** [demo/pulsewall-seed.sql](demo/pulsewall-seed.sql) creates the "blown up" demo
+  state: roughly 5k posts and 50k reactions.
+- **Lovable/Supabase migration guide exists.**
+  [LOVABLE_SUPABASE_TO_POSTGRES_MIGRATION_GUIDE.md](migration-info/LOVABLE_SUPABASE_TO_POSTGRES_MIGRATION_GUIDE.md)
+  is the source of truth for the real migration mechanics.
+- **Architecture doc exists.**
+  [plans/ONE_CLICK_AIVEN_BEHAVIOR_MIGRATION_AGENT_ARCHITECTURE.md](plans/ONE_CLICK_AIVEN_BEHAVIOR_MIGRATION_AGENT_ARCHITECTURE.md)
+  defines the one-click operator, access ladder, agents, safety gates, and proof package.
 
-A real-time hype/reaction wall for a live event (festival / launch / stream). Attendees post
-short messages + a photo; the wall, live reaction counts, and a leaderboard update in real
-time on a big screen; "find similar hype" semantic search. Viral by nature ("it blew up, the
-Supabase bill exploded"), very visual on stage. It's built on Supabase deliberately so the
-migration lights up the full behavior graph:
+## PulseWall behavior map
 
-| Feature (on Supabase) | Behavior class | Demo beat |
-|---|---|---|
-| `posts`/`reactions` tables + RLS | direct migrate | row counts match before/after |
-| pgvector semantic search | direct migrate → Aiven pgvector | *win:* "AI search moves natively, Aiven is AI-ready" |
-| Realtime wall + leaderboard | **rewrite → Aiven Kafka** | **hero beat:** channel → Kafka, live event hop |
-| Auth (magic link) | adapter required | honestly flagged |
-| Storage (post images) | externalize to object store | honestly flagged |
-<<<<<<< HEAD
-| Edge function (embeddings) | embeddings migrate to Aiven pgvector; glue → worker | flagged (Aiven Apps host = post-GA) |
+| Feature on Supabase | Behavior class | Demo beat |
+| --- | --- | --- |
+| `posts` / `reactions` tables | Direct migrate | row counts match after Aiven sample migration |
+| indexes, constraints, triggers | Direct migrate / review | smoke queries and trigger behavior checked |
+| pgvector + `match_posts` | Direct migrate if extension available | "AI search moves natively" |
+| Realtime wall + leaderboard | Rewrite -> Aiven Postgres events for demo; validate Kafka production path | hero beat: channel -> Postgres event -> browser, plus Kafka agent bus |
+| Auth magic link | Adapter required | flagged as production blocker |
+| Storage post images | Object-store adapter required | flagged as production blocker |
+| Edge function embeddings | Backend worker/API rewrite | not a live production migration target |
+| RLS using Supabase auth context | Review required | flagged honestly before production cutover |
 
-**Scope rule for the live demo:** build *all* features in Lovable (cheap there) + seed heavily;
-but on stage only **migrate pgvector+tables to Aiven**, **rewrite realtime→Kafka (live)**, show the
-**cost card** + **CTO recs**, and boot the rewired app against Aiven. Auth/storage/edge get
-classified + flagged instantly (no live surgery). Full range, no fragile over-reach.
+## Live demo scope
 
-## Open questions / blockers (help wanted)
+Run one polished path:
 
-- **✅ Lovable export surface — resolved.** See [demo/lovable-export-checklist.md](demo/lovable-export-checklist.md).
-  Build PulseWall on **your own Supabase project, NOT Lovable Cloud** (Lovable Cloud gives no
-  direct DB URL / service-role key → the migrator can't reach it). Then we get the connection
-  string, service-role key, SQL editor, and a GitHub-synced repo to scan. Cost story confirmed:
-  Lovable Cloud bills jump 3–5× from 10k→50k users.
-- **Seed script ready:** [demo/pulsewall-seed.sql](demo/pulsewall-seed.sql) (~5k posts / ~50k reactions).
-- **❌ Aiven Apps access — verified no-go (~00:30).** Account not LA-enabled, GitHub not connected.
-  Pivoted: no live App deploy in the demo; the rewired app runs against Aiven directly. Still worth
-  asking Daniil/Julie on site — if enabled before 18:00 we bolt the deploy on as a bonus beat.
-=======
-| Edge function (embeddings) | convert -> **Aiven App** if access works | the "delete Supabase" deploy beat |
+1. Show PulseWall running with Supabase behavior.
+2. Click `Graduate To Aiven`.
+3. Scan real source files and SQL migrations.
+4. Build behavior graph.
+5. Verify/create Aiven shadow Postgres + Kafka through MCP.
+6. Migrate representative `posts` / `reactions` rows to Aiven Postgres.
+7. Validate row counts, smoke query, extension availability, and receipt writes.
+8. Rewrite realtime behavior to Aiven Postgres `app_events` and prove browser delivery; also prove Aiven Kafka produce/read as the agent bus.
+9. Switch the scoped demo runtime to the Aiven-backed adapter.
+10. End on a proof report: Supabase runtime dependency removed for the demo path, blockers listed,
+    rollback ready.
 
-**Scope rule for the live demo:** build enough features in Lovable/Supabase to light up the
-behavior graph, then on stage **rewrite realtime -> Kafka**, **shadow pgvector/tables**, and
-perform a controlled demo cutover where the happy path runs without Supabase. Auth/storage get
-classified honestly as production blockers; the demo path uses a seeded/local user and external or
-static image URLs so full Supabase deletion is real for what the judge sees.
+## Open blockers / next work
 
-## Open questions / blockers (help wanted)
+- **Implement Aiden Control Room.** Add the local browser dashboard for timeline, behavior graph,
+  Aiven shadow plane, receipts, validations, and final report.
+- **Implement local worker state machine.** Keep the demo deterministic:
+  `identify_backend -> scan_repo -> map_behavior -> prepare_aiven -> migrate_sample -> validate -> rewrite_realtime -> commit_cutover -> report`.
+- **Implement provider swap.** PulseWall needs `supabaseProvider` and `aivenProvider`; after cutover,
+  the happy path should use Aiven-backed API calls and Postgres-backed events instead of `supabase-js`.
+- **Wire Aiven proof actions.** Use Aiven MCP for visible service checks, receipt writes, Kafka
+  topic/event actions, and validation reads. Use direct `pg` only for deterministic migration where
+  needed.
+- **Keep secrets local.** Supabase/Aiven URLs, service keys, Postgres URLs, Kafka credentials, and
+  Anthropic keys stay in `.env.local` only.
+- **CTO agent scope.** Ship one or two concrete recommendations from validation or Aiven metrics;
+  do not build a broad ops product.
 
-- **🚧 Lovable export surface (do this first).** What do we actually get from a Lovable
-  project — repo access, the Supabase project directly, or both? The whole migrator points at
-  this. Need to confirm before building.
-- **🚧 Aiven Apps access.** Ask Daniil / Julie on site. This is the cleanest way to make the
-  "Supabase is gone" beat feel real; keep the generated-adapter fallback ready if access slips.
-- **Seed plan.** ~5k posts + ~50k reactions via SQL so row counts + cost story are dramatic.
->>>>>>> 3130a80 (docs: define Aiven demo flow)
-- **CTO agent scope.** For the hackathon, ship 1–2 real recommendations off live Aiven
-  metrics — concrete, not a mockup.
+## Judge framing
 
-## Judges (detail in judges.md)
+All Aiven judges are product/startup-program oriented, not pure infra reviewers. Lead with:
 
-All product / startup-program, **none infra**. **Stanislav** (presented the challenge; owns
-"context-maxing"; rewards MCP depth + polished playful demos). **Daniil** (Aiven for Startups;
-founder value + land-and-expand). **Julie** (Aiven for Startups + GreenOps; production realism,
-trust/verification, cost + carbon). Anchor frame: Aiven's own new mission **"Stop Managing.
-Start Building."** Lovable is a co-sponsor → frame as "Lovable builds, Aiven runs," not "escape."
+> Lovable builds the app. Aiden graduates the data plane to Aiven when the app becomes a company.
 
-## Reuse
-
-`ideas/architecture-advisor` (live Aiven pricing + provision via MCP/REST + benchmark) and
-`ideas/hivemind` (agent-provisions-Aiven-live-via-MCP hero moment) — both are head starts.
+Then prove it with Aiven MCP receipts, Postgres validation, Postgres-backed realtime delivery, Aiven
+Kafka agent-bus proof, and the final "Supabase removed from demo runtime" card.

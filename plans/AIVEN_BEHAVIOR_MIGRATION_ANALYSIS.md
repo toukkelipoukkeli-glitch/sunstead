@@ -111,7 +111,7 @@ This is the right problem because Aiven is a managed open-source data platform, 
 | RLS policies | Analyze and rewrite, but flag auth role dependency | Show as "needs auth adapter" |
 | Supabase Auth | Not replaced by Aiven | Generate auth adapter plan |
 | Supabase Storage | Not replaced by Aiven PostgreSQL | Route to S3/R2/object store plus metadata table |
-| Supabase Realtime | Replace with Aiven Kafka topic + outbox table + websocket bridge | Make this the flashy behavior rewrite |
+| Supabase Realtime | Demo: replace with Aiven Postgres `app_events` + SSE/polling; production event path validated with Aiven Kafka | Make this the flashy behavior rewrite without putting Kafka on the browser-critical path |
 | Edge Functions | Convert to containerized worker/API; optionally deploy with Aiven Apps | Generate plan or stub diff |
 | Supabase JS client calls | Generate adapter or backend API wrapper | Show a small code diff |
 | Vector search | Check pgvector availability through Aiven MCP | Optional quick win if stable |
@@ -226,7 +226,8 @@ Responsibilities:
 
 - generate code diffs or patch summaries;
 - replace direct Supabase client assumptions where feasible;
-- create a realtime adapter plan: Supabase channel -> Kafka-backed event stream;
+- create a realtime adapter plan: Supabase channel -> Aiven Postgres `app_events` + SSE/polling;
+- validate Aiven Kafka separately as the agent bus / production event path;
 - create an auth adapter plan;
 - create storage migration plan;
 - mark unsupported features honestly.
@@ -336,17 +337,17 @@ Demo flow:
 2. Discovery Agent scans files and dependencies.
 3. Behavior graph appears:
    - tables: direct migrate;
-   - realtime: Kafka rewrite;
+   - realtime: Postgres events rewrite, Kafka production path proof;
    - auth: adapter required;
    - storage: replacement required;
    - edge function: worker/API rewrite;
    - RLS: review required.
 4. Aiven Architect calls Aiven MCP and finds/creates target Postgres and Kafka.
 5. Migration Operator applies schema and sample rows to Aiven Postgres.
-6. Migration Operator creates `migration.events` and `app.outbox` topics in Aiven Kafka.
+6. Migration Operator creates `migration.events` in Aiven Kafka and creates/validates `app_events` in Aiven Postgres.
 7. Compatibility Surgeon generates a small code diff:
    - old: Supabase realtime channel;
-   - new: app event adapter backed by Kafka/websocket bridge.
+   - new: app event adapter backed by Aiven Postgres `app_events` and SSE/polling.
 8. Validation Auditor checks:
    - row counts;
    - smoke query;
@@ -371,9 +372,9 @@ Show:
 Supabase Realtime channel
   -> detected in frontend code
   -> classified as behavior dependency
-  -> rewritten to Aiven Kafka outbox pattern
-  -> Kafka topic created through Aiven MCP
-  -> event produced and consumed
+  -> rewritten to Aiven Postgres app_events pattern
+  -> browser delivery proven through SSE/polling
+  -> Kafka migration.events topic validated as the agent/prod event bus
   -> app adapter generated
 ```
 
@@ -398,9 +399,9 @@ Example `mcp_receipts` row:
 {
   "run_id": "run_2026_06_24_flash_sale",
   "agent": "migration_operator",
-  "intent": "create realtime replacement topic",
+  "intent": "create agent bus topic",
   "mcp_tool": "aiven_kafka_topic_create",
-  "target": "app.outbox",
+  "target": "migration.events",
   "risk": "low",
   "result": "created",
   "rollback": "delete topic before cutover",
@@ -412,7 +413,6 @@ Kafka topics:
 
 - `migration.events`
 - `migration.audit`
-- `app.outbox`
 
 Useful event names:
 
@@ -620,4 +620,3 @@ The external ambition can remain "anywhere to Aiven," but the hackathon demo sho
 > Lovable/Supabase app -> Aiven PostgreSQL + Aiven Kafka, with behavior graph, compatibility surgery, validation, and cutover receipts.
 
 This is the most sponsor-aligned version because it uses Aiven MCP deeply, makes agent autonomy visible, and gives Aiven a concrete story for capturing the wave of AI-built apps as they mature into real production systems.
-

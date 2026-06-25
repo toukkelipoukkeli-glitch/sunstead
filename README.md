@@ -1,54 +1,52 @@
-# Hackathon Playbook
+# Aiden Migration Control Room
 
-This repo is a compact operating system for hackathons.
+Hackathon project for the Aiven challenge.
 
-Use it to:
+## Start Here
 
-- classify the event before building
-- choose tracks and ideas with better expected value
-- keep agents aligned with winning, not overengineering
-- avoid repeated execution mistakes
-- run a short postmortem after every event
+The canonical implementation roadmap is:
 
-Candidate ideas (not committed yet) live under [`ideas/`](ideas/). The current
-front-runner, **Tangled Evidence Radar**, is in
-[`ideas/tangled-evidence-radar/`](ideas/tangled-evidence-radar/). Run its prototype:
+1. [plans/CRITICAL_PATH.md](plans/CRITICAL_PATH.md)
+2. [plans/LOCKED_DECISIONS.md](plans/LOCKED_DECISIONS.md)
+3. [DEMO_FLOW.md](DEMO_FLOW.md)
+4. [plans/RUNTIME_CONTRACTS.md](plans/RUNTIME_CONTRACTS.md)
+5. [plans/MCP_AND_AIVEN_CONTRACT.md](plans/MCP_AND_AIVEN_CONTRACT.md)
+6. [plans/VERIFICATION_RUNBOOK.md](plans/VERIFICATION_RUNBOOK.md)
 
-```sh
-cd ideas/tangled-evidence-radar
-npm install
-npm run dev
+If docs conflict, follow [plans/CRITICAL_PATH.md](plans/CRITICAL_PATH.md) for mission order and [plans/LOCKED_DECISIONS.md](plans/LOCKED_DECISIONS.md) for final product choices.
+
+## Current Build Target
+
+Build Mission 00 first:
+
+> Fixture-backed `Graduate To Aiven` demo shell using the final runtime contracts.
+
+Then replace fixture blocks with live proof in this order:
+
+1. Aiven MCP/Postgres receipt write and read.
+2. Aiven Postgres migrated rows and validation counts.
+3. PulseWall scanner and behavior graph.
+4. Local adapter reading from Aiven Postgres.
+5. Aiven Postgres `app_events` browser polling proof.
+6. Aiven Kafka `migration.events` agent-bus proof.
+7. Final report, cost card, CTO recommendation, and rehearsal hardening.
+
+## Locked Demo Claim
+
+```text
+Lovable/Supabase app
+  -> one click Graduate To Aiven
+  -> Aiven Postgres data plane
+  -> Aiven Postgres app_events for demo-safe browser realtime
+  -> Aiven Kafka migration.events as agent bus / production event-path proof
+  -> local Aiden adapter for the scoped demo runtime
 ```
 
-Read in this order:
+Do not claim full production Supabase replacement. Auth, Storage, RLS review, full CDC, and Aiven Apps deployment are intentionally out of the live demo path.
 
-1. [AGENTS.md](AGENTS.md)
-2. [PLAYBOOK.md](PLAYBOOK.md)
-3. [SUNSTEAD_HACK.md](SUNSTEAD_HACK.md)
-4. [CHALLENGES.md](CHALLENGES.md)
-5. [ideas/tangled-evidence-radar/TANGLED_IDEAS.md](ideas/tangled-evidence-radar/TANGLED_IDEAS.md)
-6. [ideas/tangled-evidence-radar/TANGLED_ROADMAP.md](ideas/tangled-evidence-radar/TANGLED_ROADMAP.md)
-7. [ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md](ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md)
-8. [TANGLED_HIGH_LEVEL_THESIS.md](TANGLED_HIGH_LEVEL_THESIS.md)
-9. [TANGLED_AI_PR_TRUST.md](TANGLED_AI_PR_TRUST.md)
-10. [TANGLED_ARCHETYPE_CONVERGENCE.md](TANGLED_ARCHETYPE_CONVERGENCE.md)
-11. [TOP_IDEAS_PITCH.md](TOP_IDEAS_PITCH.md)
-12. [ideas/tangled-evidence-radar/PITCH.md](ideas/tangled-evidence-radar/PITCH.md)
-13. [ideas/tangled-evidence-radar/LOG.md](ideas/tangled-evidence-radar/LOG.md)
-14. [evidence-radar-atproto/README.md](evidence-radar-atproto/README.md)
-15. [evidence-radar-atproto/DEEP_THESIS.md](evidence-radar-atproto/DEEP_THESIS.md)
-16. [autonomous-agents-world/README.md](autonomous-agents-world/README.md)
-17. [autonomous-agents-world/DEEP_THESIS.md](autonomous-agents-world/DEEP_THESIS.md)
-18. [investigations/tangled_landscape_2026_06_24/README.md](investigations/tangled_landscape_2026_06_24/README.md)
-19. [CHECKLIST.md](CHECKLIST.md)
+## Reference Material
 
-After the event:
-
-1. copy [POSTMORTEM_TEMPLATE.md](POSTMORTEM_TEMPLATE.md)
-2. write a dated postmortem
-3. update the playbook only if the lesson is reusable
-
-Rule of thumb:
-
-- hackathons are usually won by better calibration, tighter scoping, and better demos
-- not by deeper architecture
+- [migration-info/](migration-info/) contains raw migration research and market scans.
+- [demo/pulsewall/](demo/pulsewall/) is the canonical source app.
+- [BUILD_PLAN.md](BUILD_PLAN.md) explains the honest difficulty and cut lines.
+- [STATUS.md](STATUS.md) summarizes current assets, blockers, and judge framing.
