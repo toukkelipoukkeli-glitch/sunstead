@@ -11,6 +11,7 @@ const args = new Set(process.argv.slice(2))
 const verbose = args.has("--verbose")
 const jsonOutput = args.has("--json")
 const requireKafkaFlag = args.has("--require-kafka")
+const oneClickMode = args.has("--one-click")
 
 const expectedRows = {
   posts: 40,
@@ -25,6 +26,8 @@ const sensitiveEnvNames = [
   "AIVEN_KAFKA_USERNAME",
   "AIVEN_KAFKA_PASSWORD",
   "SOURCE_SUPABASE_URL",
+  "SOURCE_SUPABASE_DB_URL",
+  "SOURCE_POSTGRES_URL",
   "SOURCE_SUPABASE_ANON_KEY",
   "SOURCE_SUPABASE_SERVICE_ROLE_KEY",
   "ANTHROPIC_API_KEY"
@@ -179,6 +182,7 @@ const postJson = (path, body) =>
 
 const event = (snapshot, type) => snapshot?.events?.find((candidate) => candidate.type === type)
 const check = (snapshot, name) => snapshot?.validationChecks?.find((candidate) => candidate.checkName === name)
+const accessCheck = (snapshot, id) => snapshot?.accessSnapshot?.checks?.find((candidate) => candidate.id === id)
 
 const requireEvent = (snapshot, type, source, status, gate) => {
   const found = event(snapshot, type)
@@ -209,6 +213,66 @@ const verifySourceScan = (snapshot) => {
     fail("source scan", `Expected at least 8 behavior findings, got ${findings.length}.`)
   }
   pass("source scan", `${findings.length} findings from PulseWall`)
+}
+
+const verifyAccessPreflight = (snapshot, { requireLivePostgres }) => {
+  const access = snapshot?.accessSnapshot
+  if (!access) fail("access preflight", "Run snapshot does not include accessSnapshot.")
+  if (access.canGraduate !== true) {
+    fail("access preflight", `Expected canGraduate true, blockers: ${(access.blockers ?? []).join(", ") || "none"}.`)
+  }
+  if ((access.blockers ?? []).length > 0) {
+    fail("access preflight", `Expected no access blockers, got ${access.blockers.join(", ")}.`)
+  }
+
+  const requiredChecks = ["repo_source", "source_data", "aiven_mcp", "aiven_project", "aiven_postgres", "demo_adapter"]
+  for (const id of requiredChecks) {
+    const found = accessCheck(snapshot, id)
+    if (!found) fail("access preflight", `Missing access check ${id}.`)
+    if (found.requiredForGraduate !== true) {
+      fail("access preflight", `Access check ${id} should be required for graduation.`)
+    }
+    if (!["ready", "connected", "live_verified"].includes(found.status)) {
+      fail("access preflight", `Required access check ${id} is not ready/connected/live_verified: ${found.status}.`)
+    }
+  }
+
+  const postgres = accessCheck(snapshot, "aiven_postgres")
+  if (requireLivePostgres && postgres.status !== "live_verified") {
+    fail("access preflight", `Expected Aiven Postgres access to be live_verified after cutover, got ${postgres.status}.`)
+  }
+
+  const kafka = accessCheck(snapshot, "aiven_kafka")
+  if (!kafka) fail("access preflight", "Missing access check aiven_kafka.")
+  if (kafka.requiredForGraduate !== false) {
+    fail("access preflight", "Kafka should not be required for the browser-critical graduation path.")
+  }
+
+  const productionCutover = accessCheck(snapshot, "production_cutover")
+  if (!productionCutover || productionCutover.status !== "not_requested" || productionCutover.requiredForGraduate !== false) {
+    fail("access preflight", "Production cutover should be not_requested and non-blocking.")
+  }
+
+  const auth = accessCheck(snapshot, "production_auth")
+  const storage = accessCheck(snapshot, "production_storage")
+  if (!auth || auth.status !== "later" || !storage || storage.status !== "later") {
+    fail("access preflight", "Production auth and storage should be marked later.")
+  }
+
+  const serialized = JSON.stringify(access)
+  for (const [, value] of secretValues) {
+    if (value && serialized.includes(value)) {
+      fail("access preflight", "Access snapshot contains an unredacted secret value.")
+    }
+  }
+
+  pass(
+    "access preflight",
+    requireLivePostgres
+      ? "required access remains green and Aiven Postgres is live_verified"
+      : "required access green; Kafka/auth/storage/cutover are non-blocking scope decisions",
+    { warnings: access.warnings?.length ?? 0 }
+  )
 }
 
 const verifyProofSpine = (snapshot) => {
@@ -372,6 +436,42 @@ const verifyFinalReport = (report) => {
   pass("final report", "scoped demo runtime removed Supabase from the demo path")
 }
 
+const verifyOneClickReasoner = (proofPackage) => {
+  const keyPresent = Boolean(process.env.ANTHROPIC_API_KEY?.trim())
+  const forcedOff = process.env.AGENT_REASONER?.trim() === "off"
+  const details = proofPackage?.details ?? {}
+  if (!keyPresent || forcedOff) {
+    if (details.reasoner === "anthropic_agent_sdk") {
+      pass("agent sdk reasoner", "Anthropic Agent SDK reasoner used", {
+        model: details.reasonerModel,
+        fallback: details.reasonerFallback
+      })
+    } else {
+      warn("agent sdk reasoner", "not required; ANTHROPIC_API_KEY is missing or AGENT_REASONER=off")
+    }
+    return
+  }
+
+  if (details.requestedReasoner !== "anthropic_agent_sdk") {
+    fail("agent sdk reasoner", "ANTHROPIC_API_KEY is present but the one-click proof did not request the Anthropic Agent SDK reasoner.")
+  }
+  if (details.reasoner === "anthropic_agent_sdk") {
+    pass("agent sdk reasoner", "Anthropic Agent SDK produced proof text", {
+      model: details.reasonerModel,
+      fallback: details.reasonerFallback
+    })
+    return
+  }
+  if (details.reasoner === "deterministic" && details.reasonerFallback === true) {
+    warn("agent sdk reasoner", "Anthropic Agent SDK was requested but deterministic fallback was used", {
+      model: details.reasonerModel,
+      error: details.reasonerError
+    })
+    return
+  }
+  fail("agent sdk reasoner", `Unexpected one-click reasoner metadata: ${JSON.stringify(details).slice(0, 500)}.`)
+}
+
 const main = async () => {
   if (!jsonOutput) {
     console.log("Aiden live Aiven verification")
@@ -394,20 +494,46 @@ const main = async () => {
   if (!jsonOutput) console.log(`Run: ${runId}`)
   pass("create run", "fresh/reset run created")
 
-  const scanned = await postJson(`/api/runs/${encodeURIComponent(runId)}/source-scan`)
-  verifySourceScan(scanned)
+  const accessPreflight = await postJson(`/api/runs/${encodeURIComponent(runId)}/access-preflight`)
+  verifyAccessPreflight(accessPreflight, { requireLivePostgres: false })
 
-  const proofed = await postJson(`/api/runs/${encodeURIComponent(runId)}/proof-spine`)
-  verifyProofSpine(proofed)
+  let workflowSnapshot
 
-  const migrated = await postJson(`/api/runs/${encodeURIComponent(runId)}/data-migration`)
-  verifyDataMigration(migrated)
+  if (oneClickMode) {
+    const graduated = await postJson(`/api/runs/${encodeURIComponent(runId)}/graduate`)
+    verifySourceScan(graduated)
+    verifyProofSpine(graduated)
+    verifyDataMigration(graduated)
+    verifyCutover(graduated)
+    verifyKafkaAgentBus(graduated)
+    workflowSnapshot = graduated
 
-  const cutover = await postJson(`/api/runs/${encodeURIComponent(runId)}/provider-cutover`)
-  verifyCutover(cutover)
+    const proofPackage = event(graduated, "proof.package.generated")
+    if (!proofPackage || proofPackage.status !== "ok") {
+      fail("one-click graduate", "One-click run did not generate an ok proof.package.generated event.")
+    }
+    verifyOneClickReasoner(proofPackage)
+    pass("one-click graduate", "single Graduate To Aiven route completed the migration proof", proofPackage.details)
+  } else {
+    const scanned = await postJson(`/api/runs/${encodeURIComponent(runId)}/source-scan`)
+    verifySourceScan(scanned)
 
-  const kafka = await postJson(`/api/runs/${encodeURIComponent(runId)}/kafka-agent-bus`)
-  verifyKafkaAgentBus(kafka)
+    const proofed = await postJson(`/api/runs/${encodeURIComponent(runId)}/proof-spine`)
+    verifyProofSpine(proofed)
+
+    const migrated = await postJson(`/api/runs/${encodeURIComponent(runId)}/data-migration`)
+    verifyDataMigration(migrated)
+
+    const cutover = await postJson(`/api/runs/${encodeURIComponent(runId)}/provider-cutover`)
+    verifyCutover(cutover)
+
+    const kafka = await postJson(`/api/runs/${encodeURIComponent(runId)}/kafka-agent-bus`)
+    verifyKafkaAgentBus(kafka)
+    workflowSnapshot = kafka
+  }
+
+  const finalAccess = await postJson(`/api/runs/${encodeURIComponent(runId)}/access-preflight`)
+  verifyAccessPreflight(finalAccess ?? workflowSnapshot, { requireLivePostgres: true })
 
   await verifyAdapterRuntime(runId)
 

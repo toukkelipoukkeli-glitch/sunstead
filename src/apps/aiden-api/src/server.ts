@@ -1,10 +1,15 @@
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { config } from "dotenv"
 import cors from "@fastify/cors"
 import Fastify from "fastify"
 import { registerAdapterRoutes } from "./routes/adapter.js"
+import { registerGitHubRoutes } from "./routes/github.js"
 import { registerRunRoutes } from "./routes/runs.js"
+import { registerSetupRoutes } from "./routes/setup.js"
 
-config({ path: ".env.local" })
+const appDir = dirname(fileURLToPath(import.meta.url))
+config({ path: resolve(appDir, "../../../../.env.local"), quiet: true })
 
 const app = Fastify({
   logger: true
@@ -15,6 +20,8 @@ await app.register(cors, {
 })
 
 await registerRunRoutes(app)
+await registerSetupRoutes(app)
+await registerGitHubRoutes(app)
 await registerAdapterRoutes(app)
 
 app.get("/api/health", async () => ({

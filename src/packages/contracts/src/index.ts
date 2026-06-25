@@ -53,6 +53,88 @@ export type BehaviorClassification =
   | "review_required"
   | "cut"
 
+export type SourceKind =
+  | "pulsewall_demo"
+  | "local_lovable_export"
+  | "github_repo"
+  | "owned_supabase_project"
+  | "lovable_cloud_export"
+
+export type SourceDataPath =
+  | "seeded_demo_data"
+  | "supabase_db_url"
+  | "pg_dump_files"
+  | "csv_export"
+
+export type AivenWorkspaceMode =
+  | "henri_preconnected"
+  | "connect_existing"
+  | "create_new"
+
+export type MigrationScope = {
+  shadowMigration: boolean
+  scopedDemoCutover: boolean
+  productionCutover: "not_requested" | "approval_required" | "approved"
+  authMigration: "out_of_scope" | "adapter_required" | "configured"
+  storageMigration: "out_of_scope" | "adapter_required" | "configured"
+}
+
+export type SetupProfile = {
+  sourceKind: SourceKind
+  sourceDataPath: SourceDataPath
+  aivenWorkspaceMode: AivenWorkspaceMode
+  migrationScope: MigrationScope
+  sourceLabel: string
+  workspaceLabel: string
+  sourceRoot?: string
+  github?: GitHubSourceRef
+  detectedBehaviors: string[]
+}
+
+export type GitHubSourceRef = {
+  installationId: number
+  repositoryId: number
+  owner: string
+  repo: string
+  fullName: string
+  defaultBranch: string
+  ref?: string
+  commitSha: string
+  source: "github_app"
+}
+
+export type SourceRef = {
+  file: string
+  line: number
+  match: string
+}
+
+export type SourceEvidence = {
+  sourceRoot: string
+  sourceLabel: string
+  filesScanned: number
+  packageManagers: string[]
+  frameworks: string[]
+  supabase: {
+    clientRefs: SourceRef[]
+    envRefs: SourceRef[]
+    tableRefs: Record<string, SourceRef[]>
+    realtimeRefs: Record<string, SourceRef[]>
+    authRefs: SourceRef[]
+    storageRefs: Record<string, SourceRef[]>
+    rpcRefs: Record<string, SourceRef[]>
+    edgeFunctionRefs: Record<string, SourceRef[]>
+  }
+  migrations: {
+    files: string[]
+    tables: string[]
+    functions: string[]
+    triggers: string[]
+    rlsTables: string[]
+    extensions: string[]
+  }
+}
+
 export type BehaviorFinding = {
   id: string
   behavior: string
@@ -66,8 +148,10 @@ export type BehaviorFinding = {
 
 export type BehaviorScanResult = {
   sourceRoot: string
+  sourceLabel: string
   filesScanned: number
   refsScanned: string[]
+  evidence: SourceEvidence
   detected: {
     tables: string[]
     realtimeTables: string[]
@@ -113,6 +197,49 @@ export type KafkaAgentBusResult = {
   checks: ValidationCheck[]
 }
 
+export type AccessCheckStatus =
+  | "ready"
+  | "connected"
+  | "live_verified"
+  | "warning"
+  | "blocked"
+  | "not_requested"
+  | "later"
+
+export type AccessCheckId =
+  | "repo_source"
+  | "source_data"
+  | "aiven_mcp"
+  | "aiven_project"
+  | "aiven_postgres"
+  | "aiven_kafka"
+  | "demo_adapter"
+  | "production_auth"
+  | "production_storage"
+  | "production_cutover"
+
+export type AccessCheck = {
+  id: AccessCheckId
+  label: string
+  scope: string
+  minimumPermission: string
+  status: AccessCheckStatus
+  source: ProofSource
+  requiredForGraduate: boolean
+  proof: string
+  safeToShowDetails?: Record<string, unknown>
+}
+
+export type AccessSnapshot = {
+  runId: string
+  mode: "shadow_migration" | "fixture" | "cached"
+  canGraduate: boolean
+  blockers: string[]
+  warnings: string[]
+  checks: AccessCheck[]
+  createdAt: string
+}
+
 export type AivenReceipt = {
   id: string
   runId: string
@@ -139,7 +266,7 @@ export type ValidationCheck = {
 }
 
 export type RowValidation = {
-  table: "posts" | "reactions" | "demo_users" | "app_events"
+  table: string
   expected: number
   actual: number
   status: "passed" | "failed" | "skipped"
@@ -208,6 +335,8 @@ export type RunSnapshot = {
   status: RunStatus
   state: RunState
   mode: ProofSource
+  setupProfile: SetupProfile
+  accessSnapshot: AccessSnapshot
   events: RunEvent[]
   kafkaEvents: RunEvent[]
   behaviorFindings: BehaviorFinding[]

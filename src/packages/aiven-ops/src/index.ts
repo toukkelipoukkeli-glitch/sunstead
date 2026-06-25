@@ -10,6 +10,7 @@ import type {
   RowValidation,
   RunEvent,
   RunState,
+  SetupProfile,
   ValidationCheck
 } from "@aiden/contracts"
 import { appEvents as fixtureAppEvents, posts as fixturePosts, receipts as fixtureReceipts } from "@aiden/fixtures"
@@ -47,12 +48,14 @@ type DataMigrationAccumulator = ProofAccumulator & {
 
 const now = () => new Date().toISOString()
 
-const expectedRowCounts: Record<RowValidation["table"], number> = {
+const expectedRowCounts: Record<string, number> = {
   posts: 40,
   reactions: 120,
   demo_users: 8,
   app_events: 2
 }
+
+const dataMigrationLockKey = "aiden_sunstead_data_migration"
 
 const readEnv = (name: string) => {
   const value = process.env[name]?.trim()
@@ -74,6 +77,8 @@ const safeError = (error: unknown) => {
     "AIVEN_POSTGRES_URL",
     "AIVEN_KAFKA_USERNAME",
     "AIVEN_KAFKA_PASSWORD",
+    "SOURCE_SUPABASE_DB_URL",
+    "SOURCE_POSTGRES_URL",
     "SOURCE_SUPABASE_SERVICE_ROLE_KEY"
   ]) {
     const value = readEnv(name)
@@ -117,6 +122,14 @@ const addReceipt = (
     createdAt?: string
   }
 ) => {
+  const details =
+    input.source === "live"
+      ? {
+          controlPlane: "direct_aiven_fallback",
+          fallbackFor: "aiven_mcp",
+          ...(input.details ?? {})
+        }
+      : input.details
   acc.receipts.push({
     id: id(input.idPrefix),
     runId: acc.runId,
@@ -127,7 +140,7 @@ const addReceipt = (
     risk: input.risk,
     result: input.result,
     rollback: input.rollback,
-    details: input.details,
+    details,
     source: input.source,
     createdAt: input.createdAt ?? now()
   })
@@ -158,6 +171,7 @@ const addRowValidation = (
   acc: DataMigrationAccumulator,
   input: {
     table: RowValidation["table"]
+    expected?: number
     actual: number
     status: RowValidation["status"]
     source: ProofSource
@@ -165,7 +179,7 @@ const addRowValidation = (
 ) => {
   acc.rowValidations.push({
     table: input.table,
-    expected: expectedRowCounts[input.table],
+    expected: input.expected ?? expectedRowCounts[input.table] ?? 0,
     actual: input.actual,
     status: input.status,
     source: input.source
@@ -219,12 +233,34 @@ const timestampFromPg = (value: unknown) => {
 
 const createPgClient = () =>
   new Client({
-    connectionString: readEnv("AIVEN_POSTGRES_URL")!,
+    connectionString: normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!),
     ssl:
       readEnv("AIVEN_POSTGRES_SSL") === "false"
         ? undefined
         : { rejectUnauthorized: readEnv("AIVEN_POSTGRES_SSL_REJECT_UNAUTHORIZED") === "true" }
   })
+
+const createSourcePgClient = () =>
+  new Client({
+    connectionString: normalizeSourceConnectionString((readEnv("SOURCE_SUPABASE_DB_URL") ?? readEnv("SOURCE_POSTGRES_URL"))!),
+    ssl:
+      readEnv("SOURCE_SUPABASE_SSL") === "false"
+        ? undefined
+        : { rejectUnauthorized: readEnv("SOURCE_SUPABASE_SSL_REJECT_UNAUTHORIZED") === "true" }
+  })
+
+const normalizeConnectionString = (connectionString: string, sslDisabled: boolean) => {
+  if (sslDisabled) return connectionString
+  const url = new URL(connectionString)
+  url.searchParams.delete("sslmode")
+  return url.toString()
+}
+
+const normalizePostgresConnectionString = (connectionString: string) =>
+  normalizeConnectionString(connectionString, readEnv("AIVEN_POSTGRES_SSL") === "false")
+
+const normalizeSourceConnectionString = (connectionString: string) =>
+  normalizeConnectionString(connectionString, readEnv("SOURCE_SUPABASE_SSL") === "false")
 
 const pad = (value: number) => String(value).padStart(3, "0")
 
@@ -386,13 +422,13 @@ const verifyPostgres = async (acc: ProofAccumulator) => {
       type: "mcp.receipt.written",
       status: "skipped",
       source: "cached",
-      summary: `Live MCP receipt write skipped; missing ${required.join(", ")}.`,
+      summary: `Live Aiven action receipt write skipped; missing ${required.join(", ")}.`,
       details: { missingEnv: required }
     })
     return
   }
 
-  const connectionString = readEnv("AIVEN_POSTGRES_URL")!
+  const connectionString = normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!)
   const client = new Client({
     connectionString,
     ssl:
@@ -521,14 +557,14 @@ const verifyPostgres = async (acc: ProofAccumulator) => {
       type: "aiven.postgres.verified",
       status: "ok",
       source: "live",
-      summary: `Aiven Postgres accepted and read back a run-scoped MCP receipt (${receiptCount} receipts for run).`,
+      summary: `Aiven Postgres accepted and read back a run-scoped action receipt (${receiptCount} receipts for run).`,
       details: { receiptCount }
     })
     addEvent(acc, {
       type: "mcp.receipt.written",
       status: "ok",
       source: "live",
-      summary: "Live MCP-style receipt was written to Aiven Postgres with rollback metadata.",
+      summary: "Live Aiven action receipt was written to Aiven Postgres with rollback metadata.",
       details: { receiptCount }
     })
   } catch (error) {
@@ -561,7 +597,7 @@ const verifyPostgres = async (acc: ProofAccumulator) => {
       type: "mcp.receipt.written",
       status: "failed",
       source: "live",
-      summary: `Live MCP receipt write failed: ${message}`
+      summary: `Live Aiven action receipt write failed: ${message}`
     })
   } finally {
     await client.end().catch(() => undefined)
@@ -1328,7 +1364,492 @@ const insertMigrationReceipt = async (
   )
 }
 
-export const runAivenDataMigration = async (runId: string): Promise<DataMigrationResult> => {
+type DataMigrationOptions = {
+  setupProfile?: SetupProfile
+}
+
+type SourceTableRef = {
+  schema: string
+  table: string
+  label: string
+}
+
+const genericCopyLimit = () => {
+  const value = Number(readEnv("SOURCE_COPY_LIMIT") ?? "5000")
+  return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 50_000) : 5000
+}
+
+const sourceTableAllowlist = (): SourceTableRef[] => {
+  const raw = readEnv("SOURCE_SUPABASE_TABLES") ?? readEnv("SOURCE_POSTGRES_TABLES")
+  if (!raw) return []
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (!/^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*)?$/.test(item)) {
+        throw new Error(`Invalid source table allowlist entry: ${item}`)
+      }
+      const [maybeSchema, maybeTable] = item.split(".")
+      const schema = maybeTable ? maybeSchema : "public"
+      const table = maybeTable ?? maybeSchema
+      return { schema, table, label: `${schema}.${table}` }
+    })
+}
+
+const quoteIdent = (value: string) => `"${value.replaceAll('"', '""')}"`
+const qualifiedTable = (tableRef: SourceTableRef) => `${quoteIdent(tableRef.schema)}.${quoteIdent(tableRef.table)}`
+const safeIdPart = (value: string) => value.replace(/[^\w]+/g, "_").slice(0, 48) || "table"
+
+const ensureGenericShadowTables = async (client: InstanceType<typeof Client>) => {
+  await client.query(`
+    create table if not exists source_table_profiles (
+      run_id text not null,
+      source_label text not null,
+      source_schema text not null,
+      source_table text not null,
+      source_row_count int not null,
+      copied_row_count int not null,
+      copy_limit int not null,
+      columns jsonb not null default '[]'::jsonb,
+      created_at timestamptz not null default now(),
+      primary key (run_id, source_schema, source_table)
+    )
+  `)
+  await client.query(`
+    create table if not exists source_table_rows (
+      run_id text not null,
+      source_schema text not null,
+      source_table text not null,
+      row_index int not null,
+      row_data jsonb not null,
+      created_at timestamptz not null default now(),
+      primary key (run_id, source_schema, source_table, row_index)
+    )
+  `)
+  await client.query(`
+    create index if not exists source_table_rows_run_table_idx
+    on source_table_rows (run_id, source_schema, source_table)
+  `)
+}
+
+const readSourceTableColumns = async (sourceClient: InstanceType<typeof Client>, tableRef: SourceTableRef) => {
+  const result = await sourceClient.query<{
+    column_name: string
+    data_type: string
+    is_nullable: string
+    ordinal_position: number
+  }>(
+    `
+    select column_name, data_type, is_nullable, ordinal_position
+    from information_schema.columns
+    where table_schema = $1 and table_name = $2
+    order by ordinal_position
+    `,
+    [tableRef.schema, tableRef.table]
+  )
+  return result.rows
+}
+
+const runGenericSourceDataMigration = async (
+  runId: string,
+  setupProfile: SetupProfile | undefined
+): Promise<DataMigrationResult> => {
+  const acc: DataMigrationAccumulator = {
+    runId,
+    missingEnv: new Set<string>(),
+    events: [],
+    receipts: [],
+    checks: [],
+    rowValidations: []
+  }
+
+  const required = missing(["AIVEN_POSTGRES_URL"])
+  const hasSourceUrl = Boolean(readEnv("SOURCE_SUPABASE_DB_URL") ?? readEnv("SOURCE_POSTGRES_URL"))
+  if (!hasSourceUrl) required.push("SOURCE_SUPABASE_DB_URL")
+  const tableRefs = sourceTableAllowlist()
+  if (tableRefs.length === 0) required.push("SOURCE_SUPABASE_TABLES")
+
+  if (required.length > 0) {
+    for (const name of required) acc.missingEnv.add(name)
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "skipped",
+      source: "cached",
+      summary: `Generic source data copy skipped; missing ${required.join(", ")}.`,
+      details: { missingEnv: required, sourceDataPath: setupProfile?.sourceDataPath }
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "skipped",
+      source: "cached",
+      summary: `Generic source row validation skipped; missing ${required.join(", ")}.`,
+      details: { missingEnv: required }
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_generic_source_copy_cached",
+      agent: "migration_operator",
+      intent: "copy selected source tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: "cached",
+      source: "cached",
+      details: { missingEnv: required }
+    })
+    addCheck(acc, {
+      idPrefix: "check_generic_source_copy_cached",
+      checkName: "generic_source_table_copy",
+      status: "skipped",
+      source: "cached",
+      details: { missingEnv: required }
+    })
+    return {
+      source: "cached",
+      ok: false,
+      missingEnv: [...acc.missingEnv],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  }
+
+  const sourceClient = createSourcePgClient()
+  const targetClient = createPgClient()
+  const copyLimit = genericCopyLimit()
+
+  try {
+    await sourceClient.connect()
+    await targetClient.connect()
+    await targetClient.query("select pg_advisory_lock(hashtext($1::text))", [`${dataMigrationLockKey}:generic`])
+    await targetClient.query("begin")
+    await ensureDataMigrationTables(targetClient)
+    await ensureGenericShadowTables(targetClient)
+    await targetClient.query(
+      `
+      insert into migration_runs (run_id, demo_name, status, updated_at)
+      values ($1, $2, 'generic_source_data_copy', now())
+      on conflict (run_id) do update set status = excluded.status, updated_at = now()
+      `,
+      [runId, setupProfile?.sourceLabel ?? "lovable_source"]
+    )
+    await targetClient.query("delete from source_table_rows where run_id = $1", [runId])
+    await targetClient.query("delete from source_table_profiles where run_id = $1", [runId])
+
+    const tableResults: Array<{
+      tableRef: SourceTableRef
+      sourceRowCount: number
+      copiedRowCount: number
+      columns: unknown[]
+      truncated: boolean
+    }> = []
+
+    for (const tableRef of tableRefs) {
+      const columns = await readSourceTableColumns(sourceClient, tableRef)
+      if (columns.length === 0) {
+        throw new Error(`Source table not found or has no visible columns: ${tableRef.label}`)
+      }
+      const countResult = await sourceClient.query<{ count: string }>(
+        `select count(*)::text as count from ${qualifiedTable(tableRef)}`
+      )
+      const sourceRowCount = Number(countResult.rows[0]?.count ?? "0")
+      const rows = await sourceClient.query<{ row_data: Record<string, unknown> }>(
+        `select to_jsonb(src) as row_data from ${qualifiedTable(tableRef)} src limit $1`,
+        [copyLimit]
+      )
+
+      for (const [index, row] of rows.rows.entries()) {
+        await targetClient.query(
+          `
+          insert into source_table_rows (run_id, source_schema, source_table, row_index, row_data)
+          values ($1, $2, $3, $4, $5::jsonb)
+          `,
+          [runId, tableRef.schema, tableRef.table, index + 1, JSON.stringify(row.row_data)]
+        )
+      }
+
+      await targetClient.query(
+        `
+        insert into source_table_profiles (
+          run_id, source_label, source_schema, source_table, source_row_count,
+          copied_row_count, copy_limit, columns
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        `,
+        [
+          runId,
+          setupProfile?.sourceLabel ?? "Lovable/Supabase source",
+          tableRef.schema,
+          tableRef.table,
+          sourceRowCount,
+          rows.rowCount ?? 0,
+          copyLimit,
+          JSON.stringify(columns)
+        ]
+      )
+
+      tableResults.push({
+        tableRef,
+        sourceRowCount,
+        copiedRowCount: rows.rowCount ?? 0,
+        columns,
+        truncated: sourceRowCount > copyLimit
+      })
+    }
+
+    for (const result of tableResults) {
+      const status = result.truncated || result.copiedRowCount !== result.sourceRowCount ? "failed" : "passed"
+      addRowValidation(acc, {
+        table: result.tableRef.label,
+        expected: result.sourceRowCount,
+        actual: result.copiedRowCount,
+        status,
+        source: "live"
+      })
+      addCheck(acc, {
+        idPrefix: `check_generic_${safeIdPart(result.tableRef.label)}`,
+        checkName: `generic_source_copy_${result.tableRef.schema}_${result.tableRef.table}`,
+        status,
+        source: "live",
+        details: {
+          sourceTable: result.tableRef.label,
+          sourceRowCount: result.sourceRowCount,
+          copiedRowCount: result.copiedRowCount,
+          copyLimit,
+          truncated: result.truncated,
+          columnCount: result.columns.length
+        }
+      })
+    }
+
+    const allPassed = acc.rowValidations.length > 0 && acc.rowValidations.every((validation) => validation.status === "passed")
+    await insertMigrationReceipt(targetClient, {
+      runId,
+      agent: "migration_operator",
+      intent: "copy selected source tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: allPassed ? "ok" : "failed",
+      rollback: "delete from source_table_rows/source_table_profiles where run_id matches this run",
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        tables: tableResults.map((result) => result.tableRef.label),
+        copyLimit
+      }
+    })
+    await targetClient.query("commit")
+
+    addReceipt(acc, {
+      idPrefix: "receipt_generic_source_copy_live",
+      agent: "migration_operator",
+      intent: "copy selected source tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: allPassed ? "ok" : "failed",
+      rollback: "delete run-scoped source_table_rows and source_table_profiles rows",
+      source: "live",
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        tableCount: tableResults.length,
+        copyLimit
+      }
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_generic_source_validate_live",
+      agent: "validation_auditor",
+      intent: "validate selected source table row counts",
+      tool: "aiven_pg_read",
+      target: "source_table_profiles",
+      risk: "read_only",
+      result: allPassed ? "ok" : "failed",
+      source: "live",
+      details: {
+        tables: tableResults.map((result) => ({
+          table: result.tableRef.label,
+          expected: result.sourceRowCount,
+          actual: result.copiedRowCount,
+          truncated: result.truncated
+        }))
+      }
+    })
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: allPassed ? "ok" : "failed",
+      source: "live",
+      summary: allPassed
+        ? `Copied ${tableResults.length} selected source table(s) into Aiven shadow rows.`
+        : `Generic source copy ran, but at least one selected table did not fully validate.`,
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        tables: tableResults.map((result) => result.tableRef.label),
+        copyLimit
+      }
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: allPassed ? "ok" : "failed",
+      source: "live",
+      summary: allPassed
+        ? "Aiven shadow row counts match the selected source table counts."
+        : "Aiven shadow row-count validation failed for one or more selected source tables.",
+      details: {
+        tables: tableResults.map((result) => ({
+          table: result.tableRef.label,
+          sourceRowCount: result.sourceRowCount,
+          copiedRowCount: result.copiedRowCount,
+          truncated: result.truncated
+        }))
+      }
+    })
+
+    return {
+      source: "live",
+      ok: allPassed,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  } catch (error) {
+    await targetClient.query("rollback").catch(() => undefined)
+    const message = safeError(error)
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "failed",
+      source: "live",
+      summary: `Generic source data copy failed: ${message}`
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "failed",
+      source: "live",
+      summary: `Generic source row validation failed: ${message}`
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_generic_source_copy_failed",
+      agent: "migration_operator",
+      intent: "copy selected source tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    addCheck(acc, {
+      idPrefix: "check_generic_source_copy_failed",
+      checkName: "generic_source_table_copy",
+      status: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    return {
+      source: sourceFrom(acc),
+      ok: false,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  } finally {
+    await targetClient.query("select pg_advisory_unlock(hashtext($1::text))", [`${dataMigrationLockKey}:generic`]).catch(() => undefined)
+    await sourceClient.end().catch(() => undefined)
+    await targetClient.end().catch(() => undefined)
+  }
+}
+
+export const runAivenDataMigration = async (
+  runId: string,
+  options: DataMigrationOptions = {}
+): Promise<DataMigrationResult> => {
+  if (
+    options.setupProfile &&
+    options.setupProfile.sourceDataPath === "seeded_demo_data" &&
+    options.setupProfile.sourceKind !== "pulsewall_demo"
+  ) {
+    const acc: DataMigrationAccumulator = {
+      runId,
+      missingEnv: new Set<string>(),
+      events: [],
+      receipts: [],
+      checks: [],
+      rowValidations: []
+    }
+    const reason =
+      "Seeded demo data is only wired for the PulseWall demo path; selected sources need the generic source-data executor."
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "failed",
+      source: "cached",
+      summary: reason,
+      details: {
+        sourceKind: options.setupProfile.sourceKind,
+        sourceDataPath: options.setupProfile.sourceDataPath
+      }
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "failed",
+      source: "cached",
+      summary: reason
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_seeded_non_pulsewall_blocked",
+      agent: "migration_operator",
+      intent: "prevent PulseWall seeded migration for selected non-PulseWall source",
+      tool: "aiven_pg_write",
+      target: "posts,reactions,demo_users,app_events",
+      risk: "safe_write",
+      result: "failed",
+      source: "cached",
+      details: {
+        sourceKind: options.setupProfile.sourceKind,
+        sourceLabel: options.setupProfile.sourceLabel
+      }
+    })
+    addCheck(acc, {
+      idPrefix: "check_seeded_non_pulsewall_blocked",
+      checkName: "selected_source_data_path",
+      status: "failed",
+      source: "cached",
+      details: { reason }
+    })
+    return {
+      source: "cached",
+      ok: false,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  }
+
+  if (options.setupProfile && options.setupProfile.sourceDataPath !== "seeded_demo_data") {
+    return runGenericSourceDataMigration(runId, options.setupProfile)
+  }
+
   const acc: DataMigrationAccumulator = {
     runId,
     missingEnv: new Set<string>(),
@@ -1356,9 +1877,12 @@ export const runAivenDataMigration = async (runId: string): Promise<DataMigratio
   const demoPosts = buildDemoPosts()
   const demoReactions = buildDemoReactions(demoPosts)
   const demoEvents = buildDemoAppEvents(runId)
+  let migrationLockAcquired = false
 
   try {
     await client.connect()
+    await client.query("select pg_advisory_lock(hashtext($1::text))", [dataMigrationLockKey])
+    migrationLockAcquired = true
     await client.query("begin")
     await ensureDataMigrationTables(client)
     await client.query(
@@ -1474,9 +1998,9 @@ export const runAivenDataMigration = async (runId: string): Promise<DataMigratio
       `,
       [runId]
     )
-    const actual = counts.rows[0] ?? { posts: 0, reactions: 0, demo_users: 0, app_events: 0 }
+    const actual: Record<string, number> = counts.rows[0] ?? { posts: 0, reactions: 0, demo_users: 0, app_events: 0 }
 
-    const validations = (Object.keys(expectedRowCounts) as RowValidation["table"][]).map((table) => ({
+    const validations = Object.keys(expectedRowCounts).map((table) => ({
       table,
       actual: actual[table],
       passed: actual[table] === expectedRowCounts[table]
@@ -1658,6 +2182,9 @@ export const runAivenDataMigration = async (runId: string): Promise<DataMigratio
       rowValidations: acc.rowValidations
     }
   } finally {
+    if (migrationLockAcquired) {
+      await client.query("select pg_advisory_unlock(hashtext($1::text))", [dataMigrationLockKey]).catch(() => undefined)
+    }
     await client.end().catch(() => undefined)
   }
 }

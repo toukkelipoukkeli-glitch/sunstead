@@ -11,6 +11,7 @@
     "@aiden/aiven-ops": "0.1.0",
     "@aiden/contracts": "0.1.0",
     "@aiden/fixtures": "0.1.0",
+    "@aiden/github-source": "0.1.0",
     "@aiden/migration-core": "0.1.0",
     "@aiden/pulsewall-adapter": "0.1.0",
     "@fastify/cors": "^11.1.0",

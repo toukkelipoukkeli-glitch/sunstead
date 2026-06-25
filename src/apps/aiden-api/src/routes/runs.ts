@@ -1,13 +1,17 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
+import type { SetupProfile } from "@aiden/contracts"
 import { resetAdapterRuntime } from "../state/adapterRuntime.js"
+import { applySetupRuntimeConfig } from "../state/setupConfig.js"
 import {
   advanceRun,
   createRun,
   getSnapshot,
   pauseRun,
   resetRun,
+  runAccessPreflight,
   runDataMigration,
   runKafkaAgentBus,
+  runOneClickGraduate,
   runProviderCutover,
   runProofSpine,
   runSourceScan,
@@ -19,18 +23,33 @@ type RunParams = {
   runId: string
 }
 
+type CreateRunBody = {
+  setupProfile?: Partial<SetupProfile>
+  sourceDbUrl?: string
+  sourceTables?: string
+  sourceCopyLimit?: string
+  sourceSslDisabled?: boolean
+}
+
 type StepParams = {
   runId: string
   stepName: string
 }
 
 export const registerRunRoutes = async (app: FastifyInstance) => {
-  app.post("/api/runs", async () => {
+  app.post<{ Body: CreateRunBody }>("/api/runs", async (request) => {
+    applySetupRuntimeConfig(request.body ?? {})
     resetAdapterRuntime()
-    return createRun()
+    return createRun({ setupProfile: request.body?.setupProfile })
   })
 
   app.post<{ Params: RunParams }>("/api/runs/:runId/graduate", async (request) => {
+    resetAdapterRuntime()
+    return runOneClickGraduate(request.params.runId)
+  })
+
+  app.post<{ Params: RunParams }>("/api/runs/:runId/graduate-fixture", async (request) => {
+    resetAdapterRuntime()
     return startFixtureRun(request.params.runId)
   })
 
@@ -40,6 +59,10 @@ export const registerRunRoutes = async (app: FastifyInstance) => {
 
   app.post<{ Params: RunParams }>("/api/runs/:runId/source-scan", async (request) => {
     return runSourceScan(request.params.runId)
+  })
+
+  app.post<{ Params: RunParams }>("/api/runs/:runId/access-preflight", async (request) => {
+    return runAccessPreflight(request.params.runId)
   })
 
   app.post<{ Params: RunParams }>("/api/runs/:runId/data-migration", async (request) => {

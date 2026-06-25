@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
-import type { BehaviorFinding, BehaviorScanResult } from "@aiden/contracts"
+import type { BehaviorFinding, BehaviorScanResult, SourceEvidence, SourceRef } from "@aiden/contracts"
 import { behaviorFindings as fixtureBehaviorFindings } from "@aiden/fixtures"
 
 type SourceFile = {
@@ -13,6 +13,7 @@ type SourceFile = {
 
 type ScannerOptions = {
   sourceRoot?: string
+  sourceLabel?: string
 }
 
 const ignoredDirs = new Set([".git", "node_modules", "dist", "build", ".next", ".turbo"])
@@ -25,6 +26,7 @@ const sortAlpha = (items: string[]) => unique(items).sort((a, b) => a.localeComp
 const findExistingSourceRoot = (input?: string) => {
   const candidates = [
     input,
+    process.env.LOVABLE_SOURCE_ROOT,
     process.env.PULSEWALL_SOURCE_ROOT,
     path.resolve(process.cwd(), "demo/pulsewall"),
     path.resolve(process.cwd(), "../demo/pulsewall"),
@@ -35,7 +37,7 @@ const findExistingSourceRoot = (input?: string) => {
 
   const found = candidates.find((candidate) => existsSync(candidate))
   if (!found) {
-    throw new Error("PulseWall source root not found. Set PULSEWALL_SOURCE_ROOT or run from the sunstead repo.")
+    throw new Error("Lovable/Supabase source root not found. Set LOVABLE_SOURCE_ROOT or run from the sunstead repo.")
   }
   return path.resolve(found)
 }
@@ -82,6 +84,24 @@ const refsFor = (files: SourceFile[], pattern: RegExp, limit = 6) => {
   return refs.slice(0, limit)
 }
 
+const sourceRefsFor = (files: SourceFile[], pattern: RegExp, limit = 20): SourceRef[] => {
+  const refs: SourceRef[] = []
+  for (const file of files) {
+    file.lines.forEach((line, index) => {
+      pattern.lastIndex = 0
+      const match = pattern.exec(line)
+      if (match) {
+        refs.push({
+          file: file.relativePath,
+          line: index + 1,
+          match: (match[1] ?? match[0]).slice(0, 120)
+        })
+      }
+    })
+  }
+  return refs.slice(0, limit)
+}
+
 const refsMatching = (files: SourceFile[], predicate: (file: SourceFile) => boolean) =>
   files.filter(predicate).map((file) => file.relativePath)
 
@@ -109,16 +129,95 @@ const collectLineMatches = (files: SourceFile[], pattern: RegExp, shouldSkip: (l
   return sortAlpha(values)
 }
 
+const collectLineRefsByMatch = (
+  files: SourceFile[],
+  pattern: RegExp,
+  shouldSkip: (line: string) => boolean = () => false
+) => {
+  const grouped: Record<string, SourceRef[]> = {}
+  for (const file of files) {
+    for (const [index, line] of file.lines.entries()) {
+      if (shouldSkip(line)) continue
+      pattern.lastIndex = 0
+      const match = pattern.exec(line)
+      const key = match?.[1]
+      if (!key) continue
+      grouped[key] = grouped[key] ?? []
+      if (grouped[key].length < 10) {
+        grouped[key].push({
+          file: file.relativePath,
+          line: index + 1,
+          match: key
+        })
+      }
+    }
+  }
+  return Object.fromEntries(Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)))
+}
+
+const isLikelyPgIdentifier = (value: string) => /^[a-zA-Z_][\w]*$/.test(value)
+
+const lineContext = (file: SourceFile, index: number, before = 3, after = 2) =>
+  file.lines.slice(Math.max(0, index - before), Math.min(file.lines.length, index + after + 1)).join("\n")
+
+const collectClientTableMatches = (files: SourceFile[]) => {
+  const names: string[] = []
+  const refs: Record<string, SourceRef[]> = {}
+
+  for (const file of files) {
+    for (const [index, line] of file.lines.entries()) {
+      const context = lineContext(file, index)
+      if (/storage\s*\.\s*from\s*\(/.test(context)) continue
+
+      const pattern = /\.from\(\s*['"`]([^'"`]+)['"`]\s*\)/g
+      for (const match of line.matchAll(pattern)) {
+        const table = match[1]
+        if (!table || !isLikelyPgIdentifier(table)) continue
+        names.push(table)
+        refs[table] = refs[table] ?? []
+        if (refs[table].length < 10) {
+          refs[table].push({ file: file.relativePath, line: index + 1, match: table })
+        }
+      }
+    }
+  }
+
+  return { names: sortAlpha(names), refs: Object.fromEntries(Object.entries(refs).sort(([a], [b]) => a.localeCompare(b))) }
+}
+
+const collectRealtimeTableMatches = (files: SourceFile[]) => {
+  const names: string[] = []
+  const refs: Record<string, SourceRef[]> = {}
+
+  for (const file of files) {
+    for (const [index, line] of file.lines.entries()) {
+      const context = lineContext(file, index, 5, 2)
+      if (!/postgres_changes|supabase_realtime|schema:\s*['"`]public['"`]/.test(context)) continue
+
+      const pattern = /table:\s*['"`]([^'"`]+)['"`]/g
+      for (const match of line.matchAll(pattern)) {
+        const table = match[1]
+        if (!table || !isLikelyPgIdentifier(table)) continue
+        names.push(table)
+        refs[table] = refs[table] ?? []
+        if (refs[table].length < 10) {
+          refs[table].push({ file: file.relativePath, line: index + 1, match: table })
+        }
+      }
+    }
+  }
+
+  return { names: sortAlpha(names), refs: Object.fromEntries(Object.entries(refs).sort(([a], [b]) => a.localeCompare(b))) }
+}
+
 const collectTables = (files: SourceFile[]) => {
-  const clientTables = collectLineMatches(files, /\.from\(\s*['"`]([^'"`]+)['"`]\s*\)/g, (line) =>
-    line.includes("storage.from")
-  )
+  const clientTables = collectClientTableMatches(files).names
   const sqlTables = collectMatches(files, /create\s+table\s+if\s+not\s+exists\s+(?:public\.)?([a-zA-Z_][\w]*)/gi)
   return sortAlpha([...clientTables, ...sqlTables].filter((table) => !table.includes(".")))
 }
 
 const collectRealtimeTables = (files: SourceFile[]) => {
-  const clientTables = collectMatches(files, /table:\s*['"`]([^'"`]+)['"`]/g)
+  const clientTables = collectRealtimeTableMatches(files).names
   const sqlTables = collectMatches(files, /alter\s+publication\s+supabase_realtime\s+add\s+table\s+(?:public\.)?([a-zA-Z_][\w]*)/gi)
   return sortAlpha([...clientTables, ...sqlTables])
 }
@@ -149,6 +248,9 @@ const collectRlsTables = (files: SourceFile[]) =>
 const collectTriggerFunctions = (files: SourceFile[]) =>
   sortAlpha(collectMatches(files, /create\s+or\s+replace\s+function\s+(?:public\.)?([a-zA-Z_][\w]*)\(\)\s+returns\s+trigger/gi))
 
+const collectExtensions = (files: SourceFile[]) =>
+  sortAlpha(collectMatches(files, /create\s+extension\s+(?:if\s+not\s+exists\s+)?["']?([a-zA-Z_][\w-]*)["']?/gi))
+
 const hasPattern = (files: SourceFile[], pattern: RegExp) =>
   files.some((file) => {
     pattern.lastIndex = 0
@@ -163,7 +265,7 @@ const finding = (input: Omit<BehaviorFinding, "source" | "detected"> & { detecte
 
 const buildFindings = (files: SourceFile[], detected: BehaviorScanResult["detected"]): BehaviorFinding[] => {
   const tableRefs = unique([
-    ...refsFor(files, /create\s+table\s+if\s+not\s+exists\s+(?:public\.)?(posts|reactions)\b/i),
+    ...refsFor(files, /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-zA-Z_][\w]*)\b/i),
     ...refsFor(files, /\.(from|insert|select|update)\(/),
     ...refsFor(files, /create\s+(index|trigger)|reaction_count/i)
   ])
@@ -189,7 +291,7 @@ const buildFindings = (files: SourceFile[], detected: BehaviorScanResult["detect
       sourceRefs: tableRefs,
       classification: "direct_migrate",
       target: "Aiven Postgres",
-      demoTreatment: `Migrate ${detected.tables.join(", ")} plus reaction_count trigger semantics; validate row counts in Aiven.`
+      demoTreatment: `Migrate ${detected.tables.join(", ")} plus detected trigger semantics; validate row counts in Aiven.`
     }),
     finding({
       id: "behavior_realtime",
@@ -229,7 +331,7 @@ const buildFindings = (files: SourceFile[], detected: BehaviorScanResult["detect
       sourceRefs: edgeRefs,
       classification: "rewrite",
       target: "Local backend worker or deployable function service",
-      demoTreatment: `Detect ${detected.edgeFunctions.join(", ")} and mark it as behavior rewrite outside Aiven Apps.`
+      demoTreatment: `Detect ${detected.edgeFunctions.join(", ")} and mark it as a backend rewrite outside the scoped data-plane migration.`
     }),
     finding({
       id: "behavior_rpc",
@@ -250,14 +352,74 @@ const buildFindings = (files: SourceFile[], detected: BehaviorScanResult["detect
   ].filter((item) => item.detected)
 }
 
-export const scanPulseWallSource = async (options: ScannerOptions = {}): Promise<BehaviorScanResult> => {
+const detectPackageManagers = (files: SourceFile[]) => {
+  const names = new Set<string>()
+  if (files.some((file) => file.relativePath === "package.json")) names.add("npm")
+  if (files.some((file) => file.relativePath.endsWith("pnpm-lock.yaml"))) names.add("pnpm")
+  if (files.some((file) => file.relativePath.endsWith("yarn.lock"))) names.add("yarn")
+  return [...names].sort()
+}
+
+const detectFrameworks = (files: SourceFile[]) => {
+  const text = files.map((file) => file.text).join("\n")
+  const names = new Set<string>()
+  if (/"react"|'react'|from\s+["']react["']/.test(text)) names.add("React")
+  if (/"vite"|'vite'|@vitejs/.test(text)) names.add("Vite")
+  if (/"next"|'next'|next\//.test(text)) names.add("Next.js")
+  if (/@tanstack/.test(text)) names.add("TanStack")
+  if (/supabase-js|@supabase\/supabase-js/.test(text)) names.add("Supabase JS")
+  return [...names].sort()
+}
+
+const buildSourceEvidence = (
+  sourceRoot: string,
+  sourceLabel: string,
+  files: SourceFile[],
+  detected: BehaviorScanResult["detected"]
+): SourceEvidence => ({
+  sourceRoot,
+  sourceLabel,
+  filesScanned: files.length,
+  packageManagers: detectPackageManagers(files),
+  frameworks: detectFrameworks(files),
+  supabase: {
+    clientRefs: sourceRefsFor(files, /@supabase\/supabase-js|createClient\(/),
+    envRefs: sourceRefsFor(files, /VITE_SUPABASE|SUPABASE_(?:URL|ANON_KEY|SERVICE_ROLE_KEY)/),
+    tableRefs: {
+      ...collectClientTableMatches(files).refs,
+      ...collectLineRefsByMatch(files, /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-zA-Z_][\w]*)/gi)
+    },
+    realtimeRefs: {
+      ...collectRealtimeTableMatches(files).refs,
+      ...collectLineRefsByMatch(files, /alter\s+publication\s+supabase_realtime\s+add\s+table\s+(?:public\.)?([a-zA-Z_][\w]*)/gi)
+    },
+    authRefs: sourceRefsFor(files, /supabase\.auth\.|auth\.uid\(\)|auth\.users/i),
+    storageRefs: collectLineRefsByMatch(files, /storage\.from\(\s*['"`]([^'"`]+)['"`]\s*\)/g),
+    rpcRefs: collectLineRefsByMatch(files, /\.rpc\(\s*['"`]([^'"`]+)['"`]/g),
+    edgeFunctionRefs: collectLineRefsByMatch(files, /functions\.invoke\(\s*['"`]([^'"`]+)['"`]/g)
+  },
+  migrations: {
+    files: files
+      .map((file) => file.relativePath)
+      .filter((relativePath) => relativePath.endsWith(".sql") || relativePath.startsWith("supabase/migrations/"))
+      .sort((a, b) => a.localeCompare(b)),
+    tables: detected.tables,
+    functions: detected.rpcFunctions,
+    triggers: detected.triggerFunctions,
+    rlsTables: detected.rlsTables,
+    extensions: collectExtensions(files)
+  }
+})
+
+export const scanLovableSource = async (options: ScannerOptions = {}): Promise<BehaviorScanResult> => {
   const sourceRoot = findExistingSourceRoot(options.sourceRoot)
   const rootStat = await stat(sourceRoot)
   if (!rootStat.isDirectory()) {
-    throw new Error(`PulseWall source root is not a directory: ${sourceRoot}`)
+    throw new Error(`Lovable/Supabase source root is not a directory: ${sourceRoot}`)
   }
 
   const files = await readSourceFiles(sourceRoot)
+  const sourceLabel = options.sourceLabel ?? "Lovable/Supabase source"
   const detected: BehaviorScanResult["detected"] = {
     tables: collectTables(files),
     realtimeTables: collectRealtimeTables(files),
@@ -272,14 +434,22 @@ export const scanPulseWallSource = async (options: ScannerOptions = {}): Promise
 
   return {
     sourceRoot,
+    sourceLabel,
     filesScanned: files.length,
     refsScanned: files.map((file) => file.relativePath),
+    evidence: buildSourceEvidence(sourceRoot, sourceLabel, files, detected),
     detected,
     findings: buildFindings(files, detected),
     source: "live",
     createdAt: new Date().toISOString()
   }
 }
+
+export const scanPulseWallSource = async (options: ScannerOptions = {}): Promise<BehaviorScanResult> =>
+  scanLovableSource({
+    ...options,
+    sourceLabel: options.sourceLabel ?? "PulseWall demo app"
+  })
 
 export const scanSupabaseUsage = async (): Promise<BehaviorFinding[]> => {
   return (await scanPulseWallSource()).findings

@@ -92,7 +92,7 @@ export const fixtureEvents: RunEvent[] = [
     state: "aiven_shadow_ready",
     status: "ok",
     source: "fixture",
-    summary: "MCP-style receipt written with risk and rollback metadata.",
+    summary: "Aiven action receipt written with risk, rollback, and control-plane metadata.",
     createdAt: at(29)
   },
   {
@@ -102,7 +102,7 @@ export const fixtureEvents: RunEvent[] = [
     state: "migration_running",
     status: "ok",
     source: "fixture",
-    summary: "PulseWall demo schema applied to Aiven Postgres.",
+    summary: "PulseWall schema applied to Aiven Postgres.",
     createdAt: at(35)
   },
   {
@@ -112,7 +112,7 @@ export const fixtureEvents: RunEvent[] = [
     state: "migration_validated",
     status: "ok",
     source: "fixture",
-    summary: "Posts, reactions, demo users, and app events match expected row counts.",
+    summary: "Posts, reactions, users, and app events match expected row counts.",
     createdAt: at(42)
   },
   {
@@ -142,7 +142,7 @@ export const fixtureEvents: RunEvent[] = [
     state: "demo_cutover_complete",
     status: "ok",
     source: "fixture",
-    summary: "Scoped demo runtime now reads and writes through the local Aiden adapter.",
+    summary: "Controlled runtime now reads and writes through the local Aiden adapter.",
     createdAt: at(64)
   },
   {
@@ -185,7 +185,7 @@ export const behaviorFindings: BehaviorFinding[] = [
     sourceRefs: ["src/App.jsx:supabase.auth"],
     classification: "adapter_required",
     target: "Production auth adapter",
-    demoTreatment: "Use seeded demo user; mark production blocker.",
+    demoTreatment: "Use managed source user; mark production blocker.",
     source: "fixture"
   },
   {
@@ -195,7 +195,7 @@ export const behaviorFindings: BehaviorFinding[] = [
     sourceRefs: ["src/Wall.jsx:storage.from"],
     classification: "adapter_required",
     target: "Object-store adapter",
-    demoTreatment: "Use static demo image URLs; mark production blocker.",
+    demoTreatment: "Use static image URLs; mark production blocker.",
     source: "fixture"
   },
   {
@@ -242,7 +242,7 @@ export const receipts: AivenReceipt[] = [
     target: "migration_runs",
     risk: "safe_write",
     result: "ok",
-    rollback: "delete fixture run rows after rehearsal",
+    rollback: "delete prepared run rows after rehearsal",
     source: "fixture",
     createdAt: at(22)
   },
@@ -264,7 +264,7 @@ export const receipts: AivenReceipt[] = [
     agent: "aiven_operator",
     intent: "verify Kafka service",
     tool: "aiven_service_get",
-    target: "kafka-demo",
+    target: "migration.events",
     risk: "read_only",
     result: "ok",
     source: "fixture",
@@ -279,7 +279,7 @@ export const receipts: AivenReceipt[] = [
     target: "migration.events",
     risk: "safe_write",
     result: "ok",
-    rollback: "delete topic after demo if needed",
+    rollback: "delete topic if needed",
     source: "fixture",
     createdAt: at(25)
   },
@@ -287,12 +287,12 @@ export const receipts: AivenReceipt[] = [
     id: "receipt_schema_apply",
     runId: fixtureRunId,
     agent: "migration_operator",
-    intent: "apply PulseWall demo schema",
+    intent: "apply PulseWall schema",
     tool: "aiven_pg_write",
     target: "posts,reactions,demo_users,app_events",
     risk: "safe_write",
     result: "ok",
-    rollback: "drop demo tables after rehearsal",
+    rollback: "drop shadow tables after rollback window",
     source: "fixture",
     createdAt: at(35)
   },
@@ -404,7 +404,7 @@ export const validationChecks: ValidationCheck[] = [
   {
     id: "check_cutover",
     runId: fixtureRunId,
-    checkName: "scoped_demo_runtime_smoke_test",
+    checkName: "controlled_runtime_smoke_test",
     status: "passed",
     details: { provider: "aivenProvider", supabaseRuntimePath: "unused" },
     source: "fixture",
@@ -415,7 +415,7 @@ export const validationChecks: ValidationCheck[] = [
 export const posts: Post[] = [
   {
     id: "post_001",
-    body: "Launch wall is live. Reactions are coming from the Aiven-backed scoped runtime.",
+    body: "Launch wall is live. Reactions are coming from the Aiven-backed controlled runtime.",
     authorHandle: "@mira",
     imageUrl: "https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=900&q=80",
     reactionCount: 48,
@@ -430,7 +430,7 @@ export const posts: Post[] = [
   },
   {
     id: "post_003",
-    body: "The demo runtime is using Aiven Postgres for reads, writes, and app_events polling.",
+    body: "The controlled runtime is using Aiven Postgres for reads, writes, and app_events polling.",
     authorHandle: "@nova",
     reactionCount: 29,
     createdAt: at(-120)
@@ -488,7 +488,7 @@ export const appEvents: PulseWallEvent[] = [
 
 export const finalReport: Report = {
   runId: fixtureRunId,
-  headline: "Migrated demo path running on Aiven",
+  headline: "Migrated runtime path running on Aiven",
   readinessScore: 82,
   demoCutoverStatus: "passed",
   runtimeDependency: "removed_from_scoped_demo_path",
@@ -505,9 +505,9 @@ export const finalReport: Report = {
     "Production Storage requires object-store migration.",
     "RLS policies using Supabase auth context require review before production cutover."
   ],
-  rollback: "Switch the scoped demo adapter back to Supabase, keep the source untouched, and drop Aiven shadow tables after the rollback window.",
-  costSummary: "Demo estimate: Supabase starter path replaced by Aiven Postgres plus Kafka services sized for growth.",
-  ctoRecommendation: "Add connection pooling and keep Kafka as the production event path before moving beyond the scoped demo runtime.",
+  rollback: "Switch the controlled runtime adapter back to Supabase, keep the source untouched, and drop Aiven shadow tables after the rollback window.",
+  costSummary: "Sizing estimate: Supabase starter path replaced by Aiven Postgres plus Kafka services sized for growth.",
+  ctoRecommendation: "Add connection pooling and keep Kafka as the production event path before expanding beyond the controlled runtime path.",
   source: "fixture",
   createdAt: at(72)
 }

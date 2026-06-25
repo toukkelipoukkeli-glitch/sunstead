@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 navigate/
+artifacts/
 .gitignore
 .env
 .env.*

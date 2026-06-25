@@ -92,12 +92,19 @@ const readEnv = (name: string) => {
 
 const createClient = () =>
   new Client({
-    connectionString: readEnv("AIVEN_POSTGRES_URL")!,
+    connectionString: normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!),
     ssl:
       readEnv("AIVEN_POSTGRES_SSL") === "false"
         ? undefined
         : { rejectUnauthorized: readEnv("AIVEN_POSTGRES_SSL_REJECT_UNAUTHORIZED") === "true" }
   })
+
+const normalizePostgresConnectionString = (connectionString: string) => {
+  if (readEnv("AIVEN_POSTGRES_SSL") === "false") return connectionString
+  const url = new URL(connectionString)
+  url.searchParams.delete("sslmode")
+  return url.toString()
+}
 
 const timestamp = (value: unknown) => {
   if (value instanceof Date) return value.toISOString()
