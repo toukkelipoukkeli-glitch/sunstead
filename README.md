@@ -1,61 +1,29 @@
-# Hackathon Playbook
+<div align="center">
 
-This repo is a compact operating system for hackathons.
+# Overmind
+
+### The agentic front door to Aiven.
+
+**Point Overmind at a Lovable/Supabase app — an agent swarm graduates its data, realtime and search onto Aiven, then an always-on CTO agent runs it for you.**
+
+[**Get started**](overmind/README.md) · [**Live demo**](https://toukkelipoukkeli-glitch.github.io/overmind-live/)
+
+<a href="overmind/README.md"><img src="overmind/docs/media/hero.png" alt="Overmind — graduate Lovable apps to Aiven, by agents" width="820" /></a>
+
+</div>
 
 ## Demo
 
-<video src="https://github.com/toukkelipoukkeli-glitch/sunstead/raw/main/demo.mp4" controls muted playsinline width="100%"></video>
+<video src="https://github.com/toukkelipoukkeli-glitch/sunstead/raw/main/overmind/docs/media/demo.mp4" controls muted playsinline width="100%"></video>
 
-> ▶︎ **[Watch the 50-second demo](demo.mp4)** (if the player above doesn't load) — an agent crew
-> migrates a Lovable/Supabase app onto Aiven: Connect → migrate the database → open the PR.
+> ▶︎ **[Watch the 50-second demo](overmind/docs/media/demo.mp4)** (if the player above doesn't load) — an agent crew migrates a Lovable/Supabase app onto Aiven: connect → migrate the database → open the PR.
 
-Use it to:
+---
 
-- classify the event before building
-- choose tracks and ideas with better expected value
-- keep agents aligned with winning, not overengineering
-- avoid repeated execution mistakes
-- run a short postmortem after every event
+- 🧠 **Behavior migration, not just data migration** — recovers what your app expected its backend to *do* (auth, storage, realtime, data API, vector search) and re-expresses each on an Aiven-native primitive.
+- 🤖 **An autonomous agent swarm** provisions Aiven, moves your data with verified row-count parity, generates the replacement backend, and opens a pull request — every action an auditable receipt, all over the **Aiven MCP**.
+- 📡 **A CTO agent that never leaves** — reads live Aiven metrics and tells you the next move: scale, index, region.
 
-Candidate ideas (not committed yet) live under [`ideas/`](ideas/). The current
-front-runner, **Tangled Evidence Radar**, is in
-[`ideas/tangled-evidence-radar/`](ideas/tangled-evidence-radar/). Run its prototype:
+**→ [Get started and read the full docs](overmind/README.md)**
 
-```sh
-cd ideas/tangled-evidence-radar
-npm install
-npm run dev
-```
-
-Read in this order:
-
-1. [AGENTS.md](AGENTS.md)
-2. [PLAYBOOK.md](PLAYBOOK.md)
-3. [SUNSTEAD_HACK.md](SUNSTEAD_HACK.md)
-4. [CHALLENGES.md](CHALLENGES.md)
-5. [ideas/tangled-evidence-radar/TANGLED_IDEAS.md](ideas/tangled-evidence-radar/TANGLED_IDEAS.md)
-6. [ideas/tangled-evidence-radar/TANGLED_ROADMAP.md](ideas/tangled-evidence-radar/TANGLED_ROADMAP.md)
-7. [ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md](ideas/tangled-evidence-radar/TANGLED_EVIDENCE_SCENARIO.md)
-8. [TANGLED_HIGH_LEVEL_THESIS.md](TANGLED_HIGH_LEVEL_THESIS.md)
-9. [TANGLED_AI_PR_TRUST.md](TANGLED_AI_PR_TRUST.md)
-10. [TANGLED_ARCHETYPE_CONVERGENCE.md](TANGLED_ARCHETYPE_CONVERGENCE.md)
-11. [TOP_IDEAS_PITCH.md](TOP_IDEAS_PITCH.md)
-12. [ideas/tangled-evidence-radar/PITCH.md](ideas/tangled-evidence-radar/PITCH.md)
-13. [ideas/tangled-evidence-radar/LOG.md](ideas/tangled-evidence-radar/LOG.md)
-14. [evidence-radar-atproto/README.md](evidence-radar-atproto/README.md)
-15. [evidence-radar-atproto/DEEP_THESIS.md](evidence-radar-atproto/DEEP_THESIS.md)
-16. [autonomous-agents-world/README.md](autonomous-agents-world/README.md)
-17. [autonomous-agents-world/DEEP_THESIS.md](autonomous-agents-world/DEEP_THESIS.md)
-18. [investigations/tangled_landscape_2026_06_24/README.md](investigations/tangled_landscape_2026_06_24/README.md)
-19. [CHECKLIST.md](CHECKLIST.md)
-
-After the event:
-
-1. copy [POSTMORTEM_TEMPLATE.md](POSTMORTEM_TEMPLATE.md)
-2. write a dated postmortem
-3. update the playbook only if the lesson is reusable
-
-Rule of thumb:
-
-- hackathons are usually won by better calibration, tighter scoping, and better demos
-- not by deeper architecture
+> *Stop managing infra. Start talking to it.*

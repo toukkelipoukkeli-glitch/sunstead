@@ -1,166 +1,216 @@
+<div align="center">
+
 # Overmind
 
-> **Point Overmind at any Lovable/Supabase app → a swarm of agents graduates its heavy layer —
-> data, realtime, search — onto Aiven while you watch, then a CTO agent runs it for you.**
+### The agentic front door to Aiven.
 
-Overmind is an autonomous agent swarm that **graduates a vibe-coded Lovable/Supabase app's
-backend onto Aiven**. It doesn't just copy tables. It recovers what the app *expected its backend to
-do* — auth, storage, realtime, data API, vector search — re-expresses each behavior on an
-Aiven-native primitive, moves your data with verified row-count parity, generates the replacement
-backend, verifies the data + realtime really landed, and then **stays on as an always-on CTO
-operator** reading live Aiven metrics. Your data + realtime go live on Aiven; the app keeps shipping
-on Lovable; your CTO operates it.
+**Point Overmind at a Lovable/Supabase app — an agent swarm graduates its data, realtime and search onto Aiven, then an always-on CTO agent runs it for you.**
 
-This is the ambitious sibling of the sensible one-click migrator. Where the honest "Aiden" approach
-**flags** the hard behaviors (auth/storage) as "adapter required," **Overmind builds them**. Zero
-Supabase. Zero flags. Full autonomy — bounded by typed tools and an auditable receipt ledger.
+[**Live demo**](https://toukkelipoukkeli-glitch.github.io/overmind-live/) · [**▶ Watch the demo**](docs/media/overmind-demo.mp4) · [**Quickstart**](#quickstart)
+
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
+![Aiven](https://img.shields.io/badge/Aiven-PostgreSQL%20%2B%20Kafka-FF5200)
+![Claude](https://img.shields.io/badge/Claude-Opus%204.8-D97757?logo=anthropic&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-111111)
+
+<a href="https://toukkelipoukkeli-glitch.github.io/overmind-live/">
+  <img src="docs/media/hero.png" alt="Overmind — graduate Lovable apps to Aiven, by agents" width="900" />
+</a>
+
+</div>
 
 ---
 
-## What it is, in one screen
+## What it is
 
-A single npm package with five concerns and a live mission-control UI:
+You build fast on a starter stack — then you outgrow it. The app scales, the bill climbs, and you
+suddenly need **proper, production-grade infrastructure**: managed Postgres, real streaming, scaling,
+pooling, replicas. But the starter backend locks you in, hides your credentials, and getting your
+data out without losing a row is the kind of job you're not supposed to have to do.
 
-| Layer | What it does |
+**Overmind is the exit ramp.** It doesn't just copy tables — it does **behavior migration**: it
+recovers what your app expected its backend to *do* (auth, storage, realtime, data API, vector
+search) and re-expresses each behavior on an Aiven-native primitive. It moves your data with verified
+row-count parity, generates the replacement backend, opens a pull request, and then **stays on as an
+always-on CTO agent** reading live Aiven metrics. Your data and realtime go live on Aiven; the app
+keeps shipping; your CTO operates it.
+
+> **Behavior migration, not just data migration.** Data migration asks *"can I copy these tables?"*
+> Overmind asks *"what did this app expect its backend to **do** — and which of those become
+> Aiven-native?"*
+
+---
+
+## How it works
+
+One click runs a swarm of specialist agents through a 10-phase pipeline. Every infrastructure action
+is an autonomous tool call recorded as an auditable **receipt** and streamed live to Mission Control.
+
+```mermaid
+flowchart LR
+  App["Lovable / Supabase app"] --> S
+  subgraph S["Overmind agent swarm"]
+    direction LR
+    Recon --> Architect --> Operator --> Surgeon --> Migrator --> Healer --> Verifier --> CTO
+  end
+  Operator -- "Aiven MCP" --> AV
+  Migrator --> AV
+  subgraph AV["Aiven data plane"]
+    PG[("Postgres + pgvector")]
+    KF[("Apache Kafka")]
+  end
+  CTO -. "live metrics" .-> AV
+```
+
+| Phase | What happens |
 |---|---|
-| **`core/`** | Deterministic migration brain. Scans the repo + introspects the source DB → a **behavior graph** (the heart of "behavior migration"). No Aiven, no network except the source DB. |
-| **`aiven/`** | All Aiven access — the **judged MCP surface**. A Claude agent drives the live Aiven MCP (`aiven_*` tools); a REST path is the deterministic fallback. Every action → a `Receipt`. |
-| **`surgeon/`** | Codegen. Emits a real Aiven-native backend (own JWT auth, `/api` data routes over Aiven PG, Kafka→SSE realtime bridge, pgvector search, bytea storage), modeled on `demo/pulsewall-aiven`. |
-| **`agents/`** | The Anthropic Agent SDK **swarm** — Recon · Architect · Surgeon · Healer · CTO — bounded tool-loops that add reasoning + narration on top of the deterministic core. |
-| **`server/`** | The **orchestrator + 10-phase state machine**, SSE fan-out, self-heal loop, verifier, and the persistent CTO tick. Plus WorkOS auth (humans via AuthKit, **agents self-register** for scoped JWTs). |
-| **`web/`** | Mission Control — a React dashboard that is a **pure function of the `/api/stream` SSE**: swarm nodes, the behavior graph filling in, receipts streaming, the Aiven plane, cost card, CTO panel. |
+| **recon** | Clone the repo, scan the code, and introspect the live source database. |
+| **graph** | Classify every backend behavior into a **behavior graph** with a 0–100 readiness score. |
+| **plan** | Design the target Aiven stack (Postgres + pgvector, Kafka) and estimate cost. |
+| **provision** | Create a fresh Aiven Postgres and Kafka **live through the Aiven MCP**. |
+| **migrate** | Move schema, rows and embeddings into Aiven Postgres. |
+| **generate** | Write the Aiven-native backend — JWT auth, data API, a Kafka→SSE realtime bridge, vector search. |
+| **heal** | Test the generated code, read the real errors, patch, and repeat until green. |
+| **verify** | Assert row-count parity, run a Kafka produce→consume roundtrip and a pgvector search. |
+| **cutover** | Open a GitHub pull request repointing the app at its new Aiven backend. |
+| **operate** | The CTO agent reads live Aiven metrics and recommends the next move — scale, index, region. |
 
-The whole thing degrades gracefully: every external dependency (Anthropic key, Aiven token, target
-DB) is optional. Missing one drops that stage to a clearly-labelled deterministic path so the
-pipeline — and the demo — always runs end to end. Real where it's real, honest where it isn't.
+**The swarm** — Recon (reads the app) · Architect (graph → Aiven stack + cost) · Operator (drives the
+Aiven MCP) · Surgeon (generates the backend) · Migrator (moves data + embeddings) · Healer
+(generate → test → patch loop) · Verifier (parity, Kafka, vector search) · CTO (stays on, reads live
+metrics). Each agent is a bounded tool-loop — autonomy you can audit, not a free-form shell.
 
----
-
-## Architecture
-
-### The swarm (Anthropic Agent SDK + Aiven MCP)
-
-A live mesh of specialist agents, each a **bounded** Claude tool-loop (hard turn ceiling, typed
-tools, receipt ledger — autonomy that's auditable, not a free-form shell):
-
-- **Recon** — scans the repo + introspects the source DB, reasons about the behavior graph.
-- **Architect** — graph → target Aiven stack (PG + pgvector, Kafka topics) + plan + cost.
-- **Operator** — drives the **Aiven MCP**: provision PG + Kafka, topics, connection info, receipts.
-- **Surgeon** — *generates* the Aiven-native backend, one service per behavior.
-- **Migrator** — moves schema + data + embeddings into Aiven Postgres.
-- **Healer** (loop) — generate → check the backend → read error → patch → re-check.
-- **Verifier** — row-count parity, smoke query, Kafka roundtrip, pgvector search.
-- **CTO** (persistent) — reads live Aiven metrics → scaling / index / cost / **carbon** moves.
-
-### The 10-phase state machine (`server/orchestrator.ts`)
-
-```
-recon → graph → plan → provision → migrate → generate → heal → verify → cutover → operate
-```
-
-Each phase is wrapped: a thrown error becomes a `{type:'log'|'error'}` event and the run continues
-where it's safe to. Every phase emits typed `SwarmEvent`s the UI renders live. The contract for the
-whole system is one file — [`shared/types.ts`](shared/types.ts) — imported by every package *and*
-the UI, so the swarm's parts cohere.
-
-### The Aiven MCP (the judged core)
-
-`aiven/mcp.ts` runs an Anthropic agent wired to the live Aiven MCP
-(`https://mcp.aiven.live/mcp?allow_secrets=true`, bearer `AIVEN_TOKEN`) via the Messages API MCP
-connector. The agent calls `aiven_*` tools **itself**; every tool call is turned into a `Receipt`
-and streamed to the control room. MCP usage spans the surface:
-
-`aiven_project_list` · `aiven_service_list` · `aiven_service_get` · `aiven_service_type_plans` ·
-`aiven_service_plan_pricing` · `aiven_service_create` · `aiven_service_connection_info` ·
-`aiven_pg_service_available_extensions` · `aiven_pg_write` · `aiven_pg_read` ·
-`aiven_kafka_topic_create` · `aiven_kafka_topic_message_produce` · `aiven_kafka_topic_message_list` ·
-`aiven_service_metrics_fetch` · `aiven_pg_optimize_query`.
-
-> MCP is the **control plane and proof layer** — provisioning, inspection, schema/metadata writes,
-> Kafka topics/events, validation reads, metrics, receipts — *not* the bulk data pipe. (Note:
-> `aiven_pg_write` blocks `CREATE FUNCTION`/`DROP`, so functions/triggers apply over a direct `pg`
-> connection in `aiven/pg.ts`.)
-
-### Agentic auth (autonomy you can trust)
-
-`server/workos.ts` gives humans a WorkOS AuthKit login **and lets an agent register itself**
-(`POST /api/agents/register`) to receive scoped, short-lived credentials before it can `POST
-/api/run`. With no `WORKOS_API_KEY` this runs in self-contained **mock mode** (locally-signed scoped
-JWTs) so the agentic-signup story demos with zero external account.
+> Every external dependency is optional. Missing a key drops that stage to a deterministic path, so
+> the full pipeline runs end to end out of the box — add credentials to make it live.
 
 ---
 
-## How to run it
+## MCP, two ways
 
-Prereqs: Node 20+. `node_modules` is already installed — **do not** run `npm install`.
+Overmind treats the **[Model Context Protocol](https://modelcontextprotocol.io)** as the data layer,
+both as a client and as a server.
+
+**It drives the Aiven MCP.** A Claude (Opus 4.8) agent connects to the live Aiven MCP via the
+Messages API MCP connector and calls the tools itself — provisioning services, creating topics,
+reading connection info, writing and reading rows, fetching metrics. The MCP isn't a cosmetic call:
+*its output is the connection string the migrated app actually runs on.*
+
+```
+aiven_service_create · aiven_service_get · aiven_service_type_plans · aiven_service_plan_pricing
+aiven_service_connection_info · aiven_pg_write · aiven_pg_read · aiven_pg_optimize_query
+aiven_pg_service_available_extensions · aiven_kafka_topic_create · aiven_kafka_topic_message_produce
+aiven_kafka_topic_message_list · aiven_service_metrics_fetch
+```
+
+**It is itself an MCP server.** Overmind exposes its own operations as MCP tools (stdio,
+[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol)), so any agent in any MCP
+client can drive a full migration:
+
+| Tool | Does |
+|---|---|
+| `overmind_analyze` | Scan an app → behavior graph + readiness score (read-only). |
+| `overmind_migrate` | Run a full migration onto Aiven. |
+| `overmind_status` | Live infra health, in plain English. |
+| `overmind_advise` | The CTO's next-move recommendations. |
+| `overmind_cost` | Aiven cost vs. the source backend. |
+| `overmind_services` | List the tenant's Aiven services. |
+
+See [`mcp/README.md`](mcp/README.md) for the server.
+
+---
+
+## Quickstart
+
+Prereqs: **Node 20+**.
 
 ```bash
-# 1. Configure (all keys optional — missing ones degrade gracefully)
-cp .env.example .env.local        # then fill what you have
-
-# 2. Dev: API (:8788) + Vite web (proxied /api → :8788), both with hot reload
-npm run dev
-
-# 3. Or headless: stream every SwarmEvent as one JSON line on stdout
-npm run migrate:demo              # drives the full 10-phase run against demo/live-hype-wall
-
-# 4. Production-style: build the web bundle, then serve it from the API
-npm run build && npm start        # http://0.0.0.0:8788
+npm install
+cp .env.example .env.local      # every key is optional — it runs without any
+npm run dev                     # API on :8788, web on :5180 (Vite proxies /api → :8788)
 ```
 
-**API surface** (Hono, binds `0.0.0.0:8788`):
+Open **http://localhost:5180**, then hit **Launch** in Mission Control.
 
-- `GET /api/health` — readiness + which integrations are live (`aiven`/`anthropic`/`workos`).
-- `GET /api/stream` — SSE of `SwarmEvent`s (`event: pulse` + `event: ping` heartbeat). The UI is a
-  pure function of this stream; multiple browsers watch the same run live.
-- `POST /api/run {source?}` — start a migration (auth-gated: human session **or** registered agent).
-- `POST /api/agents/register` — an agent self-registers for scoped credentials.
+With no keys, the full pipeline runs end to end on deterministic paths — great for a first look. Add
+`AIVEN_TOKEN` and `ANTHROPIC_API_KEY` to make provisioning and migration live against real Aiven
+services.
 
-**Environment** (`.env.local`, see `.env.example`):
+Headless run (stream every event as JSON lines on stdout):
 
-- `AIVEN_TOKEN`, `AIVEN_PROJECT=touko-1f1c` — the live Aiven MCP / REST surface.
-- `ANTHROPIC_API_KEY` — the swarm + the Aiven-MCP agent. **Unset → agents run deterministic paths.**
-- `DATABASE_URL`, `KAFKA_*` — the target Aiven PG + Kafka, filled after provisioning.
-- `SOURCE_REPO_DIR` (default `../demo/live-hype-wall`), `SOURCE_DATABASE_URL` — the app to migrate.
-- `WORKOS_*` — optional; absent → mock-mode agentic auth.
+```bash
+npm run migrate:demo
+```
 
 ---
 
-## Real proof points (no smoke)
+## Configuration
 
-What is genuinely real in the demo, and where to see it:
+All variables are optional and degrade gracefully — see [`.env.example`](.env.example) for the full list.
 
-- **A real 32-behavior graph.** `core/graph.ts` fuses the static repo scan (`core/scan.ts`) and live
-  DB introspection (`core/introspect.ts`) into one classified `BehaviorGraph` — table / index /
-  function / trigger / RLS / extension / realtime / auth / storage / RPC / edge-function / client
-  call — each with classification, dependency edges, evidence (file:line or `pg_*` catalog), and a
-  blended **0–100 readiness score** (the proof number). This is behavior migration, not a `pg_dump`.
-- **MCP-provisioned Aiven stack.** `overmind-pg` (Postgres + pgvector) and, when the source has
-  realtime, `overmind-kafka` — created and inspected **live through the Aiven MCP** on project
-  `touko-1f1c`, with every `aiven_*` call written to the receipt ledger the UI streams.
-- **Real migrated data.** Schema + representative rows + embeddings land in Aiven Postgres; the
-  Verifier asserts **row-count parity** against the source and a live smoke query (`select 1`,
-  `pg_extension` check for `vector`).
-- **Realtime actually hops over Aiven Kafka.** The realtime spine produces an event to an
-  Aiven Kafka topic and consumes it back — Supabase Realtime re-expressed as a Kafka + SSE bridge.
-- **The self-heal loop runs over real generated code.** `server/heal.ts` generates the Surgeon's
-  output, checks the backend, feeds real errors to the Healer agent, patches, and re-checks. (The
-  generated backend is generated, not deployed — Aiven Apps deployment is the LA-gated stretch.)
-- **The CTO agent emits real recommendations from real metrics.** `server/cto.ts` reads live Aiven
-  metrics via the MCP/REST surface → scaling / index / pooling / **carbon-aware region** moves.
-- **Agents authenticate themselves.** An agent self-registers for a scoped JWT before it can start a
-  migration — autonomy with a human-checkable boundary.
-
-The honest line for the judges: **real where it's real, honest where it isn't.** Anything that needs
-a key you didn't set is clearly labelled "planned" in the stream, never faked as live.
+| Variable | Unlocks |
+|---|---|
+| `AIVEN_TOKEN` / `AIVEN_PROJECT` | The live Aiven MCP + REST surface (provisioning, Postgres, Kafka, metrics). |
+| `ANTHROPIC_API_KEY` | The agent swarm and the Aiven-MCP agent. Unset → deterministic narration. |
+| `SOURCE_DATABASE_URL` | Migrate **your own** Supabase/Postgres app (DB-to-DB copy). Never logged. |
+| `KAFKA_BROKERS` / `KAFKA_USERNAME` / `KAFKA_PASSWORD` | The realtime Kafka path (produce/consume). |
+| `ELEVENLABS_API_KEY` | The Voice CTO — spoken status + weekly briefing. |
+| `WORKOS_*` | Human + agent auth. Absent → self-contained mock mode (locally-signed scoped JWTs). |
 
 ---
 
-## Reuse / reference
+## API
 
-- `demo/live-hype-wall` — a real Lovable source app the Recon agent scans.
-- `demo/pulsewall-aiven` — the target backend shape the Surgeon generates *toward* (copy its server
-  patterns); `demo/pulsewall-aiven/db/schema.sql` is the reference Aiven schema.
+The server is [Hono](https://hono.dev) on `0.0.0.0:8788`.
 
-See [`MOONSHOT.md`](MOONSHOT.md) for the vision, [`CONTRACT.md`](CONTRACT.md) for the module map and
-build contract, and [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) for the 4-minute stage script.
+- `GET /api/health` — readiness + which integrations are live.
+- `GET /api/stream` — SSE of typed `SwarmEvent`s. The UI is a pure function of this stream.
+- `POST /api/run` — start a migration (auth-gated: human session **or** registered agent).
+- `POST /api/agents/register` — an agent self-registers for scoped, short-lived credentials.
+
+<details>
+<summary>CTO console endpoints</summary>
+
+- `GET /api/cto/state` — live Postgres/Kafka health, rows, connections, cost, alerts.
+- `POST /api/cto/chat` — SSE: ask the CTO a question, answered from live metrics.
+- `POST /api/cto/speak` — ElevenLabs TTS (server-side only).
+- `GET /api/cto/briefing` — a spoken weekly briefing grounded in real metrics.
+
+</details>
+
+---
+
+## Project layout
+
+A single npm package, no workspaces.
+
+```
+core/      deterministic migration brain — repo scan + DB introspection → behavior graph
+aiven/     all Aiven access — the Aiven MCP agent, REST fallback, Postgres + Kafka clients
+surgeon/   codegen — emits the Aiven-native backend (auth, data API, realtime bridge, search)
+agents/    the Anthropic Agent SDK swarm — Recon · Architect · Surgeon · Healer · CTO
+server/    orchestrator + 10-phase state machine, SSE fan-out, self-heal loop, verifier, auth
+web/       Mission Control — a React dashboard that renders the /api/stream SSE live
+mcp/       the Overmind MCP server — overmind_* tools over stdio
+```
+
+The contract for the whole system is one file — [`shared/types.ts`](shared/types.ts) — imported by
+every package and the UI.
+
+---
+
+## Tech stack
+
+**TypeScript** · **Hono** + SSE · **React** + **Vite** · **Anthropic Claude (Opus 4.8)** ·
+**Aiven for PostgreSQL** (+ pgvector) · **Aiven for Apache Kafka** ·
+**MCP** (`@modelcontextprotocol/sdk`) · `pg` · `kafkajs` · WorkOS + `jose` · ElevenLabs.
+
+---
+
+<div align="center">
+
+**Stop managing infra. Start talking to it.**
+
+</div>
