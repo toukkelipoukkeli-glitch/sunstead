@@ -1,0 +1,21 @@
+{
+  "name": "@aiden/aiven-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aiden/contracts": "0.1.0",
+    "@aiden/fixtures": "0.1.0",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.22.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
