@@ -318,10 +318,12 @@
 }
 .pp-source-input .pp-leaf { color: var(--pp-dim2); flex-shrink: 0; display: inline-flex; }
 .pp-source-input input {
-  flex: 1; border: none; background: transparent; outline: none;
+  flex: 1; min-width: 0; border: none; background: transparent; outline: none;
   font-family: "Geist Mono", monospace; font-size: 13.5px; color: var(--pp-txt);
   padding: 9px 0;
 }
+.pp-source-input input::placeholder { color: var(--pp-dim2); }
+.pp-source-input:focus-within { border-color: var(--pp-txt); }
 .pp-source-badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11.5px; font-weight: 600; color: var(--pp-ok);
@@ -352,6 +354,52 @@
   border: 1px solid var(--pp-line2); border-radius: 6px; padding: 1px 7px;
 }
 .pp-phase-detail { font-size: 13px; color: var(--pp-dim); margin-top: 2px; line-height: 1.45; }
+
+/* ── Connect (#/deploy) — primary demo card + secondary bring-your-own ── */
+.pp-connect-primary {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 28px;
+  align-items: center;
+  background: var(--pp-panel);
+  border: 1.5px solid var(--pp-red);
+  border-radius: var(--pp-r);
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04), 0 14px 40px rgba(0,123,120,0.10);
+  padding: 26px 28px;
+}
+@media (max-width: 720px) { .pp-connect-primary { grid-template-columns: 1fr; gap: 18px; } }
+.pp-connect-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--pp-ok); margin-bottom: 10px;
+}
+.pp-connect-main .pp-h2 { margin-bottom: 14px; }
+.pp-connect-action { min-width: 240px; }
+@media (max-width: 720px) { .pp-connect-action { min-width: 0; } }
+
+.pp-demo-app {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--pp-cream); border: 1px solid var(--pp-line2);
+  border-radius: 12px; padding: 12px 14px;
+}
+.pp-demo-app .pp-leaf { color: var(--pp-red); flex-shrink: 0; display: inline-flex; }
+.pp-demo-app-body { flex: 1; min-width: 0; }
+.pp-demo-app-name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.pp-demo-app-sub { font-size: 12.5px; color: var(--pp-dim); margin-top: 1px; }
+
+.pp-connect-byo { margin-top: 26px; }
+.pp-byo-or {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--pp-dim2); margin-bottom: 12px;
+}
+.pp-byo-row { display: flex; gap: 10px; align-items: stretch; }
+@media (max-width: 620px) { .pp-byo-row { flex-direction: column; } }
+.pp-byo-row .pp-source-input { flex: 1; margin: 0; }
+.pp-byo-row .pp-btn { flex-shrink: 0; }
+.pp-byo-note { margin: 12px 0 0; font-size: 13px; line-height: 1.55; color: var(--pp-dim); }
+
+.pp-spin-dark { border-color: rgba(26,26,26,0.25); border-top-color: var(--pp-txt); }
 
 .pp-deploy-cta { margin-top: 26px; }
 .pp-deploy-note {
@@ -530,6 +578,21 @@
   font-size: 11.5px; color: var(--pp-dim2); line-height: 1.4; margin-top: 5px;
   padding-left: 9px; border-left: 2px solid var(--pp-line2);
 }
+
+/* ── Connect your CTO (MCP) card in the rail ── */
+.pp-mcp-card {
+  background: var(--pp-ink); border-radius: 12px; padding: 14px; margin-top: 2px;
+}
+.pp-mcp-code {
+  background: #07080b; border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px; padding: 11px 12px; overflow-x: auto;
+}
+.pp-mcp-code code {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11.5px; line-height: 1.55; color: #7de0dd;
+  white-space: pre; display: block;
+}
+.pp-mcp-cap { font-size: 11.5px; line-height: 1.5; color: #b7b7c2; margin-top: 10px; }
 
 /* right: the chat */
 .pp-chat { display: flex; flex-direction: column; min-height: 0; }

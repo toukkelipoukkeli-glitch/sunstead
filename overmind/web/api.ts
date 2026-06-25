@@ -49,13 +49,25 @@ export function connectStream(onEvent: (e: SwarmEvent) => void): () => void {
   }
 }
 
-/** Kick off a migration run. POST /api/run. Degrades silently if the API is down. */
-export async function startRun(source?: string): Promise<{ ok: boolean }> {
+/**
+ * Kick off a migration run. POST /api/run { source?, mode? }.
+ *  - `startRun()` / `startRun(undefined, 'demo')` → the real ~40s warm-path demo migration.
+ *  - `startRun(<github url>, 'analyze')`           → real clone + analyze + generate.
+ * The backend runs without login (mock mode), so this works from the public URL.
+ * Degrades to { ok:false } if the API is down — callers show an inline error.
+ */
+export async function startRun(
+  source?: string,
+  mode?: 'demo' | 'analyze',
+): Promise<{ ok: boolean }> {
   try {
+    const body: { source?: string; mode?: 'demo' | 'analyze' } = {}
+    if (source) body.source = source
+    if (mode) body.mode = mode
     const res = await apiFetch('/api/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(source ? { source } : {}),
+      body: JSON.stringify(body),
     })
     return { ok: res.ok }
   } catch {

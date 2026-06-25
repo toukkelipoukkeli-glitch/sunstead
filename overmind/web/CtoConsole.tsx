@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './product.css'
 import { apiFetch } from './config.ts'
+import { Stepper } from './components/Stepper.tsx'
 
 interface Msg {
   role: 'cto' | 'me'
@@ -244,7 +245,7 @@ export default function CtoConsole() {
             <span>Overmind</span>
           </a>
           <div className="pp-top-right">
-            <a href="#/app">Mission Control →</a>
+            <Stepper active="operate" />
           </div>
         </header>
 
@@ -385,6 +386,19 @@ export default function CtoConsole() {
                   </div>
                 ))
               )}
+            </div>
+
+            {/* ── Connect your CTO — it's also an MCP you point your own tools at ── */}
+            <div className="pp-rail-section-title">Connect your CTO</div>
+            <div className="pp-mcp-card">
+              <div className="pp-mcp-code">
+                <code>
+                  claude mcp add overmind -- npx tsx /path/to/overmind/mcp/server.ts
+                </code>
+              </div>
+              <div className="pp-mcp-cap">
+                Your Aiven CTO as an MCP — operate your infra from Claude, Cursor, or any agent.
+              </div>
             </div>
           </aside>
 
@@ -528,37 +542,37 @@ function renderText(raw: string): string {
 }
 
 // Senior-engineer fallback so the surface always responds, even before /api/cto/chat is wired.
+// Honest offline fallback — used ONLY when /api/cto/chat is unreachable (e.g. the static Pages
+// site with no backend). It must NEVER invent live metrics: it says plainly it can't read the
+// infra right now and gives general, true guidance, deferring real numbers to the live monitor.
 function fallbackReply(q: string): string {
   const s = q.toLowerCase()
+  const note =
+    "Quick heads-up: I can't reach your live infrastructure right now, so I won't quote numbers I " +
+    "can't actually read — the monitor on the left shows the real figures the moment it reconnects. " +
+    'In general: '
   if (/(scale|grow|bigger|traffic|load)/.test(s))
     return (
-      "Not yet — and that's the right answer. Your Postgres is sitting at low CPU with plenty " +
-      'of headroom on its current plan, and Kafka is barely warm. Scaling now would just burn ' +
-      "money. I watch CPU, connections and storage every few seconds, and the moment you sustain " +
-      "~70% I'll ping you with a one-click bump to the next plan — no downtime, Aiven handles the " +
-      'failover.'
+      note +
+      'the first scaling move is almost always a connection pooler (PgBouncer), not a bigger machine — ' +
+      "Aiven adds it with no downtime. I'll flag the exact moment you need it from live metrics, not a guess."
     )
   if (/(cost|price|cheap|expensive|spend|bill|\$)/.test(s))
     return (
-      'Cheaper than you think. This demo runs on a shared Aiven account, so your slice is effectively ' +
-      '$0 right now. At real production size the equivalent of your Supabase setup lands well under ' +
-      "typical Supabase Pro spend — and I'll always show you the live number in the monitor. You get " +
-      "a 99.99% SLA, no usage-based surprises, and I keep you on the smallest plan that's safe. I'll " +
-      'always flag a cheaper shape before you overpay.'
+      note +
+      "I won't guess your bill — the cost card pulls real Aiven plan pricing. Aiven is flat per-plan " +
+      '(no usage-based surprises), and I keep you on the smallest plan that is safe.'
     )
   if (/(risk|wrong|down|fail|secure|safe|backup)/.test(s))
     return (
-      "Two things I'm keeping an eye on. One: you have a single Postgres node on the demo plan — for " +
-      'production I’d add a read replica so a node failure is invisible. Two: if writes spike on your ' +
-      'busiest table I may suggest an index tweak. Backups are automatic and point-in-time on Aiven, ' +
-      "so a bad deploy is recoverable. Nothing's on fire — these are the next moves, not problems."
+      note +
+      'the usual watch-items are a single Postgres node (add a read replica for HA) and write-hot tables ' +
+      '(an index tweak). Aiven backups are automatic and point-in-time, so a bad deploy is recoverable.'
     )
-  // database / general
   return (
-    'Healthy. Postgres is `running`, pgvector search is live, and queries are returning fast, well ' +
-    'within target. Kafka is up with your realtime bridge topic flowing. You’re well ' +
-    'under plan limits on CPU and storage. I keep watching and only interrupt you when something ' +
-    'actually needs a decision.'
+    note +
+    'once connected I report real connections, cache-hit ratio, CPU/memory/disk, slow queries and cost ' +
+    'straight from your Postgres and Kafka — no invented figures.'
   )
 }
 

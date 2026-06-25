@@ -728,7 +728,22 @@ svg { display: inline-block; vertical-align: middle; }
 .done-banner .db-icon svg { width: 22px; height: 22px; }
 .done-banner .db-title { font-size: 15px; font-weight: 700; color: var(--green); letter-spacing: -0.01em; }
 .done-banner .db-sub { font-size: 12.5px; color: var(--dim); margin-top: 2px; }
+.done-banner .db-body { flex: 1; min-width: 0; }
 .done-banner .db-spark { display: none; }
+/* the prominent "operate next" hand-off — solid teal so it reads as THE next action */
+.done-banner .db-cto-btn {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px;
+  text-decoration: none; font-size: 14px; font-weight: 700; color: #fff;
+  background: var(--teal); border: 1px solid var(--teal);
+  border-radius: 11px; padding: 11px 18px;
+  transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
+}
+.done-banner .db-cto-btn:hover { background: var(--teal-d); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,123,120,0.22); }
+.done-banner .db-cto-btn svg { width: 16px; height: 16px; }
+
+/* the funnel stepper in the dashboard topbar — hide when the bar gets cramped */
+.topbar-stepper { flex-shrink: 0; }
+@media (max-width: 1200px) { .topbar-stepper { display: none; } }
 .error-banner {
   margin-top: 14px; display: flex; align-items: center; gap: 14px; padding: 14px 18px;
   border: 1px solid var(--crit-line); border-radius: var(--r);
@@ -935,6 +950,36 @@ svg { display: inline-block; vertical-align: middle; }
 .lp-footer-legal a { color: var(--lp-dim2); text-decoration: none; }
 .lp-footer-legal a:hover { color: var(--lp-txt); }
 
+/* ── ruthless-strip additions (one-path landing) ── */
+.lp-nav-foragents { font-size: 13px; font-weight: 500; color: var(--lp-dim2); text-decoration: none; transition: color .15s ease; }
+.lp-nav-foragents:hover { color: var(--lp-txt); }
+
+/* the single compact 3-step strip below the hero */
+.lp-strip { border-bottom: 1px solid var(--lp-line); background: var(--lp-soft); }
+.lp-strip-inner {
+  max-width: 1080px; margin: 0 auto; padding: 40px 28px;
+  display: flex; align-items: stretch; justify-content: center; gap: 8px; flex-wrap: wrap;
+}
+.lp-strip-step { display: flex; align-items: flex-start; gap: 14px; flex: 1; min-width: 240px; max-width: 320px; }
+.lp-strip-num {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; font-weight: 700;
+  color: #fff; background: var(--lp-teal);
+}
+.lp-strip-body { flex: 1; min-width: 0; }
+.lp-strip-title { font-weight: 700; font-size: 15.5px; letter-spacing: -0.01em; margin-bottom: 3px; }
+.lp-strip-text { font-size: 13.5px; line-height: 1.5; color: var(--lp-dim); }
+.lp-strip-arrow { align-self: center; color: var(--lp-dim2); flex-shrink: 0; }
+
+/* minimal footer for the one-path landing */
+.lp-footer-min-inner {
+  max-width: 1080px; margin: 0 auto; padding: 56px 28px 40px;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px;
+}
+.lp-footer-min-inner .lp-footer-tag { margin: 0; max-width: 480px; }
+.lp-footer-min .lp-footer-bar { justify-content: space-between; }
+
 /* ── responsive ── */
 @media (max-width: 920px) {
   .lp-pipeline { grid-template-columns: 1fr; gap: 0; }
@@ -942,6 +987,9 @@ svg { display: inline-block; vertical-align: middle; }
   .lp-deploy-card { grid-template-columns: 1fr; gap: 32px; padding: 32px; }
   .lp-footer-inner { grid-template-columns: 1fr; gap: 32px; }
   .lp-nav-links { display: none; }
+  .lp-strip-inner { flex-direction: column; align-items: stretch; gap: 22px; }
+  .lp-strip-step { max-width: none; }
+  .lp-strip-arrow { display: none; }
 }
 @media (max-width: 560px) {
   .lp-section { padding: 72px 20px; }

@@ -13,7 +13,7 @@ import type {
   RunPhase,
 } from '../shared/types.ts'
 import { connectStream, startRun } from './api.ts'
-import { apiUrl } from './config.ts'
+import { Stepper } from './components/Stepper.tsx'
 
 import { SourceCard } from './components/SourceCard.tsx'
 import { SwarmGrid } from './components/SwarmGrid.tsx'
@@ -287,15 +287,10 @@ export default function Dashboard() {
 
   const onLaunch = async () => {
     setLaunching(true)
-    const { ok } = await startRun()
-    if (!ok) {
-      // Almost always: not signed in (POST /api/run is requireHumanOrAgent). Send them through
-      // login, same as Deploy's button, instead of silently doing nothing. (Same-origin only — on
-      // the cross-origin Pages+tunnel demo the run is triggered locally or via the agent path.)
-      setLaunching(false)
-      window.location.href = apiUrl('/api/auth/login')
-      return
-    }
+    // Re-run the demo migration. The backend runs in mock mode, so no login is required —
+    // on a failure we just clear the spinner (the stream keeps rendering) rather than
+    // bouncing the user out of Mission Control.
+    await startRun(undefined, 'demo')
     // leave the spinner state to the phase stream; clear local flag shortly
     setTimeout(() => setLaunching(false), 1200)
   }
@@ -344,6 +339,10 @@ export default function Dashboard() {
           </div>
           <div className="spacer" />
           <PhaseRail phase={phase} />
+        </div>
+
+        <div className="topbar-stepper">
+          <Stepper active="watch" />
         </div>
 
         <div className="conn">
@@ -407,7 +406,9 @@ export default function Dashboard() {
             </div>
             <div className="db-sub">{state.doneSummary ?? 'Live on the Aiven plane — CTO operator now on watch.'}</div>
           </div>
-          <span className="db-spark" />
+          <a className="db-cto-btn" href="#/cto">
+            Meet your Aiven CTO <ArrowRight size={16} />
+          </a>
         </div>
       )}
 

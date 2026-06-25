@@ -1,0 +1,66 @@
+/* Stepper.css — the shared funnel rail. Self-contained colors (matches the Aiven token
+   palette: white / teal #007b78 / green #088247) so it renders identically inside the `.pp`
+   product surfaces AND the `.shell` dashboard, which don't share the same CSS variables. */
+
+.pp-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #ebebeb;
+  border-radius: 999px;
+  background: #f7f7fa;
+}
+
+.pp-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #919294;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+.pp-step:hover { color: #1a1a1a; }
+
+.pp-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  color: #919294;
+  background: #fff;
+  border: 1px solid #d6d6d6;
+}
+
+.pp-step-sep {
+  width: 16px;
+  height: 1px;
+  background: #d6d6d6;
+  margin-left: 9px;
+}
+
+/* completed steps — green check */
+.pp-step.done { color: #1a1a1a; }
+.pp-step.done .pp-step-num {
+  color: #fff;
+  background: #088247;
+  border-color: #088247;
+}
+
+/* the current step — teal pill */
+.pp-step.active { color: #006661; background: rgba(0, 123, 120, 0.08); }
+.pp-step.active .pp-step-num {
+  color: #fff;
+  background: #007b78;
+  border-color: #007b78;
+}
