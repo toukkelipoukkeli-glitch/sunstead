@@ -67,6 +67,14 @@ export interface MigrationRun {
   startedAt: string
 }
 
+// How a run is driven:
+//   'demo'    — the warm demo path: reuse the live overmind-pg/overmind-kafka and VERIFY the
+//               already-migrated data (real, ~40s). DEFAULT — do not regress.
+//   'analyze' — clone a public repo, really scan/graph/generate the Aiven-native backend, and
+//               honestly frame provisioning + live-data migration as pending the source DB creds
+//               (we never fake row counts and never touch the demo's overmind-pg data).
+export type RunMode = 'demo' | 'analyze'
+
 // ───────────────────────── The swarm (mission-control viz) ─────────────────────────
 export type AgentRole =
   | 'orchestrator' | 'recon' | 'architect' | 'operator'

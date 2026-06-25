@@ -5,7 +5,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
-import type { SwarmEvent } from '../shared/types.ts'
+import type { SwarmEvent, RunMode } from '../shared/types.ts'
 import { runMigration } from './orchestrator.ts'
 import { startMonitor, stopMonitor, getCtoState } from './monitor.ts'
 import { closeAll } from '../aiven/pg.ts'
@@ -110,24 +110,32 @@ app.get('/api/stream', (c) =>
 // Protected: callable by EITHER a logged-in human OR a valid agent bearer token. This is what an
 // agent does right after it self-registers — proving end-to-end agentic onboarding → action.
 app.post('/api/run', requireHumanOrAgent, async (c) => {
-  let source = SOURCE_REPO_DIR
+  let bodySource: string | undefined
+  let bodyMode: RunMode | undefined
   try {
     const body = await c.req.json()
-    if (body?.source && typeof body.source === 'string') source = body.source
+    if (body?.source && typeof body.source === 'string') bodySource = body.source.trim()
+    if (body?.mode === 'demo' || body?.mode === 'analyze') bodyMode = body.mode
   } catch {
-    /* empty/invalid body → default source */
+    /* empty/invalid body → defaults below */
   }
+
+  // Mode resolution: explicit `mode` wins; else an https URL source ⇒ 'analyze'; else 'demo'.
+  const isUrl = !!bodySource && /^https?:\/\//i.test(bodySource)
+  const mode: RunMode = bodyMode ?? (isUrl ? 'analyze' : 'demo')
+  // Demo mode keeps using SOURCE_REPO_DIR when no source is given (unchanged behavior).
+  const source = bodySource || SOURCE_REPO_DIR
 
   const actor = c.get('actor')
   const who = actor.agent ? `agent:${actor.agent.clientId}` : `human:${actor.human?.email}`
-  broadcast({ type: 'log', level: 'info', msg: `run started by ${who}` })
+  broadcast({ type: 'log', level: 'info', msg: `run started by ${who} (mode=${mode})` })
 
   // Kick off async; respond immediately. Events flow over /api/stream.
-  void runMigration(source, broadcast).catch((e) => {
+  void runMigration(source, broadcast, { mode }).catch((e) => {
     broadcast({ type: 'error', msg: `run failed: ${(e as Error)?.message ?? e}` })
   })
 
-  return c.json({ ok: true, source, started: true, actor: who })
+  return c.json({ ok: true, source, mode, started: true, actor: who })
 })
 
 // ── Tenant infra snapshot (the CTO console's live left rail) ─────────────────────────

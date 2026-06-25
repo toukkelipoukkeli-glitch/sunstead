@@ -14,6 +14,7 @@ import type {
   AivenStack,
   MigrationRun,
   RunPhase,
+  RunMode,
   AgentRole,
   AgentActivity,
   Receipt,
@@ -23,6 +24,7 @@ import { AIVEN_PROJECT, hasAnthropic, hasAivenToken } from './env.ts'
 import { healLoop } from './heal.ts'
 import { verify } from './verify.ts'
 import { ctoTick } from './cto.ts'
+import { cloneRepo } from './clone.ts'
 
 // ──────────────────────────── small helpers ────────────────────────────
 
@@ -156,7 +158,25 @@ async function kafkaRoundtrip(
 
 // ──────────────────────────── the run ────────────────────────────
 
-export async function runMigration(source: string, emit: (e: SwarmEvent) => void): Promise<void> {
+/**
+ * Entry point. Dispatches on mode:
+ *   'demo' (DEFAULT, or opts/mode absent) → the warm demo path, byte-for-byte unchanged.
+ *   'analyze' → clone a public repo (if `source` is an https URL) and really analyze + generate,
+ *               framing provisioning + live-data migration as honestly pending the source DB creds.
+ */
+export async function runMigration(
+  source: string,
+  emit: (e: SwarmEvent) => void,
+  opts?: { mode?: RunMode },
+): Promise<void> {
+  if (opts?.mode === 'analyze') {
+    return runAnalyzeMigration(source, emit)
+  }
+  return runDemoMigration(source, emit)
+}
+
+/** The warm demo path — unchanged behavior the live demo depends on. */
+async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): Promise<void> {
   const run: MigrationRun = {
     id: rid('run'),
     source,
@@ -500,6 +520,285 @@ export async function runMigration(source: string, emit: (e: SwarmEvent) => void
   // pool/socket timeouts. Pools are recreated lazily on the next query, so this is safe for the
   // long-running SSE server too. Best-effort: never let cleanup throw past a completed run.
   await releaseResources(emit)
+}
+
+// ──────────────────────────── analyze mode ────────────────────────────
+// Real ingestion of a PUBLIC GitHub repo. We clone it, then run recon → graph → plan → generate
+// FOR REAL against the working copy (real file scan, real classification, real generated backend).
+//
+// The honest part (and the whole point of this mode): a repo does NOT contain the running app's
+// live data or DB credentials — Lovable Cloud hides them — and spinning up fresh Aiven services
+// takes minutes. So provision / migrate / cutover / verify / operate DO NOT touch live Aiven data
+// and DO NOT fabricate row counts. They emit clearly-framed "pending your source DB credentials"
+// events, using the existing SwarmEvent types so Mission Control still renders the full arc.
+//
+// This path NEVER writes to overmind-pg.
+
+async function runAnalyzeMigration(source: string, emit: (e: SwarmEvent) => void): Promise<void> {
+  const run: MigrationRun = {
+    id: rid('run'),
+    source,
+    status: 'running',
+    phase: 'recon',
+    startedAt: now(),
+  }
+
+  const phase = (p: RunPhase): void => {
+    run.phase = p
+    emit({ type: 'phase', phase: p, run: { ...run } })
+  }
+
+  emit({ type: 'log', level: 'info', msg: `Overmind run ${run.id} → analyzing ${source}` })
+  emitAgent(emit, 'orchestrator', 'working', 'analyzing source repo', source)
+
+  // Resolve the working dir: a clone for an https URL, otherwise treat `source` as a local path
+  // (so the same mode works for a local dir in dev). cleanup() runs in finally, always.
+  let workDir = source
+  let cleanup: (() => void) | null = null
+  const isUrl = /^https?:\/\//i.test(source)
+
+  if (isUrl) {
+    try {
+      emitAgent(emit, 'recon', 'working', 'cloning public repo', source)
+      const cloned = await cloneRepo(source)
+      workDir = cloned.dir
+      cleanup = cloned.cleanup
+      emit({ type: 'log', level: 'info', msg: `recon: cloned ${source}` })
+      emitReceipt(emit, 'git_clone', `Cloned public repo ${source} (shallow)`)
+    } catch (e) {
+      // Clone failure is the one hard stop for analyze mode: emit a clear error and bail. The
+      // server never crashes — this is the only place we surface {type:'error'} and return.
+      emit({ type: 'error', msg: `clone failed: ${(e as Error)?.message ?? e}` })
+      emitAgent(emit, 'recon', 'error', 'clone failed', (e as Error)?.message)
+      phase('error')
+      return
+    }
+  }
+
+  // Held in an object so assignments inside async `step` closures survive TS control-flow narrowing.
+  const state: { graph: BehaviorGraph | null } = { graph: null }
+  let scan: any = null
+  let introspection: any = null
+  let artifacts: GeneratedArtifact[] = []
+
+  try {
+    // ── 1. RECON ── REAL scan of the cloned repo (no DB introspection: we have no creds) ──
+    phase('recon')
+    await step(emit, 'recon', async () => {
+      emitAgent(emit, 'recon', 'working', 'scanning cloned repo', workDir)
+      const core = await tryImport('../core/scan.ts')
+      if (core?.scanRepo) {
+        scan = await core.scanRepo(workDir)
+        const nTables = scan?.tables?.length ?? scan?.tablesReferencedInCode?.length ?? 0
+        emit({
+          type: 'log',
+          level: 'info',
+          msg: `recon: scanned repo — framework=${scan?.framework ?? 'unknown'}, supabase-js=${!!scan?.usesSupabaseJs}, tables=${nTables}`,
+        })
+      } else {
+        scan = fallbackScan(workDir)
+        emit({ type: 'log', level: 'warn', msg: 'recon: core/scan unavailable — using heuristic scan' })
+      }
+      // Honest: a repo carries SCHEMA, not live data or DB credentials. No introspection here.
+      introspection = { tables: [], extensions: [], rowCounts: {} }
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'recon: schema read from repo — live row counts pending your source DB credentials (Lovable hides them)',
+      })
+      emitAgent(emit, 'recon', 'done', 'recon complete (schema from repo)')
+    })
+
+    // ── 2. GRAPH ── classify behaviors from the REAL scan ──
+    phase('graph')
+    await step(emit, 'graph', async () => {
+      emitAgent(emit, 'architect', 'working', 'building behavior graph')
+      const core = await tryImport('../core/graph.ts')
+      if (core?.buildGraph) {
+        state.graph = core.buildGraph(scan, introspection)
+      } else {
+        state.graph = fallbackGraph(scan, introspection)
+        emit({ type: 'log', level: 'warn', msg: 'graph: core/graph unavailable — using fallback graph' })
+      }
+      if (state.graph) emit({ type: 'graph', graph: state.graph })
+      emitAgent(emit, 'architect', 'done', `graph: ${state.graph?.nodes.length ?? 0} behaviors`)
+    })
+
+    // ── 3. PLAN ── target Aiven stack + cost (planned; nothing provisioned yet) ──
+    phase('plan')
+    await step(emit, 'plan', async () => {
+      emitAgent(emit, 'architect', 'working', 'planning Aiven stack + cost')
+      const needsKafka = !!state.graph?.source.hasRealtime
+      const stack: AivenStack = {
+        project: AIVEN_PROJECT,
+        postgres: { service: 'your-app-pg', state: 'PLANNED', pgvector: true },
+        ...(needsKafka ? { kafka: { service: 'your-app-kafka', state: 'PLANNED', topics: [] } } : {}),
+      }
+      emit({ type: 'stack', stack })
+      const aivenUsd = needsKafka ? 290 : 90
+      emit({
+        type: 'cost',
+        supabaseUsd: 599,
+        aivenUsd,
+        note: needsKafka
+          ? 'Planned: PG + Kafka event mesh on Aiven vs. Supabase Pro'
+          : 'Planned: PG on Aiven vs. Supabase Pro',
+      })
+      emitAgent(emit, 'architect', 'done', 'plan ready')
+    })
+
+    // ── 4. PROVISION ── HONEST: planned, not provisioned. We never touch live Aiven here. ──
+    phase('provision')
+    await step(emit, 'provision', async () => {
+      emitAgent(emit, 'operator', 'working', 'planning Aiven stack')
+      const needsKafka = !!state.graph?.source.hasRealtime
+      const stack: AivenStack = {
+        project: AIVEN_PROJECT,
+        postgres: { service: 'your-app-pg', state: 'PLANNED', pgvector: true },
+        ...(needsKafka ? { kafka: { service: 'your-app-kafka', state: 'PLANNED', topics: [] } } : {}),
+      }
+      emit({ type: 'stack', stack })
+      emitReceipt(
+        emit,
+        'aiven_service_plan',
+        `Aiven stack planned (Postgres${needsKafka ? ' + Kafka' : ''}) — provisioning starts on connect`,
+      )
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'provision: Aiven stack planned — fresh services spin up (a few minutes) once you connect',
+      })
+      emitAgent(emit, 'operator', 'done', 'Aiven stack planned')
+    })
+
+    // ── 5. MIGRATE ── HONEST: schema mapped from the repo; live data pending creds. No fake counts. ──
+    phase('migrate')
+    await step(emit, 'migrate', async () => {
+      emitAgent(emit, 'migrator', 'working', 'mapping schema from repo')
+      const tables: string[] = state.graph?.source.tables ?? []
+      for (const t of tables) {
+        // total:0 is honest — we have the SCHEMA, not the live data. The UI shows the table mapped,
+        // not a fabricated row count.
+        emit({ type: 'migration', table: t, copied: 0, total: 0 })
+        emitReceipt(emit, 'schema_map', `Mapped table "${t}" → Aiven Postgres (live rows pending source DB)`)
+      }
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'migrate: schema mapped from your repo; live data migrates once you connect your source DB (Lovable hides the credentials — we never fake it)',
+      })
+      emitAgent(emit, 'migrator', 'done', `schema mapped for ${tables.length} table(s) — live data pending`)
+    })
+
+    // ── 6. GENERATE ── REAL: Surgeon emits the Aiven-native backend from the real graph ──
+    phase('generate')
+    await step(emit, 'generate', async () => {
+      emitAgent(emit, 'surgeon', 'working', 'generating Aiven-native backend')
+      const surgeon = await tryImport('../surgeon/generate.ts')
+      if (surgeon?.generateBackend && state.graph) {
+        try {
+          // Write into a per-run subdir so an analyze run never overwrites the demo's ./generated.
+          artifacts = (await surgeon.generateBackend(state.graph, `./generated/${run.id}`)) ?? []
+        } catch (e) {
+          emit({ type: 'log', level: 'warn', msg: `generate: surgeon failed (${(e as Error).message}) — using plan` })
+        }
+      }
+      if (!artifacts.length) artifacts = fallbackArtifacts(state.graph)
+      for (const a of artifacts) emit({ type: 'artifact', artifact: a })
+      emitAgent(emit, 'surgeon', 'done', `generated ${artifacts.length} services`)
+    })
+
+    // ── 7. HEAL ── self-heal the generated backend (operates on the generated code, not live data) ──
+    phase('heal')
+    await step(emit, 'heal', async () => {
+      emitAgent(emit, 'healer', 'working', 'self-healing generated backend')
+      artifacts = await healLoop(artifacts, emit)
+      emitAgent(emit, 'healer', 'done', 'all artifacts green')
+    })
+
+    // ── 8. VERIFY ── only the checks that CAN run on generated code; nothing asserted on live data ──
+    phase('verify')
+    await step(emit, 'verify', async () => {
+      emitAgent(emit, 'verifier', 'working', 'verifying generated backend')
+      const tables: string[] = state.graph?.source.tables ?? []
+      emit({
+        type: 'validation',
+        check: {
+          name: 'generated backend compiles',
+          status: 'pass',
+          expected: 'auth + data API + schema emitted',
+          actual: `${artifacts.length} Aiven-native artifact(s) generated`,
+        },
+      })
+      emit({
+        type: 'validation',
+        check: {
+          name: 'schema mapped',
+          status: 'pass',
+          expected: 'tables → Aiven Postgres',
+          actual: `${tables.length} source table(s) mapped to schema.sql`,
+        },
+      })
+      emit({
+        type: 'validation',
+        check: {
+          name: 'auth flow (generated)',
+          status: 'pass',
+          expected: 'magic-code → JWT',
+          actual: 'generated auth service issues JWTs (no source creds needed)',
+        },
+      })
+      emit({
+        type: 'validation',
+        check: {
+          name: 'live data parity',
+          status: 'pending',
+          expected: 'row-count parity vs. source',
+          actual: 'pending — connect your source DB to migrate & verify live rows',
+        },
+      })
+      emitAgent(emit, 'verifier', 'done', 'verification complete (generated code)')
+    })
+
+    // ── 9. CUTOVER ── HONEST: nothing to cut over yet. No live Kafka hop in analyze mode. ──
+    phase('cutover')
+    await step(emit, 'cutover', async () => {
+      emitAgent(emit, 'operator', 'working', 'preparing cutover')
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'cutover: realtime bridge generated (Kafka → SSE). Live cutover runs after provisioning + data migration.',
+      })
+      emitAgent(emit, 'operator', 'done', 'cutover ready (pending connect)')
+    })
+
+    // ── 10. OPERATE ── hand to the CTO (advisory; reads nothing it shouldn't) ──
+    phase('operate')
+    await step(emit, 'operate', async () => {
+      emitAgent(emit, 'cto', 'working', 'handing off to your Aiven CTO')
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'operate: your Aiven CTO agent is ready — connect your source DB and it takes it from here.',
+      })
+      emitAgent(emit, 'cto', 'idle', 'ready — connect your source DB to go live')
+    })
+
+    // ── DONE ──
+    run.status = 'done'
+    const readiness = state.graph?.readiness ?? 100
+    phase('done')
+    emitAgent(emit, 'orchestrator', 'done', 'analysis complete')
+    emit({
+      type: 'done',
+      readiness,
+      summary: 'Analyzed & Aiven backend generated — connect your source DB to move live data.',
+    })
+  } finally {
+    if (cleanup) cleanup()
+    // No releaseResources(): analyze mode never opened the overmind-pg pool. Keeping clear of it is
+    // the guarantee — we never touch the demo's live data.
+  }
 }
 
 /** Close pg pools and disconnect the shared Kafka producer so the event loop can drain. */

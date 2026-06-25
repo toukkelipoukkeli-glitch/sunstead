@@ -496,6 +496,15 @@ export const requireHumanOrAgent: MiddlewareHandler = async (c, next) => {
     c.set('actor', { human } satisfies Actor)
     return next()
   }
+  // MOCK mode only: auto-grant a demo human so the public funnel's one-click migration works with
+  // no login (and cross-origin, where a third-party cookie may not ride along). The agent
+  // self-registration path above still runs first, so that showcase is unaffected. When WorkOS is
+  // configured this branch is skipped and we 401 as before — real-mode security is untouched.
+  if (!WORKOS_ENABLED) {
+    const demo: HumanIdentity = { kind: 'human', id: 'demo', email: 'demo@overmind.dev' }
+    c.set('actor', { human: demo } satisfies Actor)
+    return next()
+  }
   return c.json(
     { error: 'auth required: log in (GET /api/auth/login) or present an agent token (POST /api/agents/register)' },
     401,
