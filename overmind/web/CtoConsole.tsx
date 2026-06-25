@@ -144,7 +144,7 @@ export default function CtoConsole() {
 
   const t = tenant ?? {}
   const pg = t.pg ?? { status: 'running', rows: 172, cpu: 8, storageGb: 1.2, plan: 'startup-4' }
-  const kafka = t.kafka ?? { status: 'running', topics: 1, plan: 'startup-2' }
+  const kafka = t.kafka ?? { status: 'running', topics: 1, plan: 'business-4' }
   const cost = t.cost ?? { aivenUsd: 0, supabaseUsd: 0 }
   const aivenUsd = cost.aivenUsd ?? 0
 
@@ -225,7 +225,7 @@ export default function CtoConsole() {
                   <b>{kafka.topics ?? 1}</b> topic{(kafka.topics ?? 1) === 1 ? '' : 's'}
                 </span>
                 <span>realtime bridge</span>
-                <span>{kafka.plan ?? 'startup-2'}</span>
+                <span>{kafka.plan ?? 'business-4'}</span>
               </div>
             </div>
 
