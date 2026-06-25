@@ -125,14 +125,14 @@ Connection checklist:
 [x] Supabase source connected
 [x] Aiven project connected
 [x] Aiven Postgres ready
-[x] Aiven Kafka ready
+[!] Aiven Kafka optional; live when configured
 [ ] Auth adapter configured later
 [ ] Storage adapter configured later
 ```
 
 Presenter line:
 
-> The setup is the access grant. The product action is one click: graduate this app to an Aiven shadow data plane.
+> The setup is the Aiven workspace. If a customer does not have Aiven, Aiden can create the workspace during setup. For this demo, Henri's pre-connected workspace is ready, so the product action is one click: graduate this app to an Aiven shadow data plane.
 
 ### 4. Graduate To Aiven
 
@@ -152,7 +152,7 @@ Analyze app
 The timeline shows:
 
 ```text
-Access Broker Agent      completed
+Aiven Workspace Agent    completed
 Repo Scanner Agent       running
 Behavior Mapper Agent    waiting
 Aiven Operator Agent     waiting
@@ -187,7 +187,7 @@ Presenter line:
 
 This starts automatically after analysis in the visible flow.
 
-Visible MCP receipts stream in:
+Visible Aiven action receipts stream in:
 
 ```text
 aiven_project_list                         ok
@@ -203,14 +203,14 @@ Right-side status:
 ```text
 Aiven Shadow Plane
 Postgres: ready
-Kafka: ready
+Kafka: live when configured; cached/warning otherwise
 Receipts: recording
 App runtime: unchanged
 ```
 
 Presenter line:
 
-> The Aiven MCP is the control plane. Every action leaves a receipt with risk and rollback.
+> The Aiven control plane is visible through configured MCP access and Aiven action receipts. In this demo runtime, direct Aiven fallback actions are labeled, and every action leaves risk and rollback context.
 
 Kafka agent bus:
 
@@ -339,7 +339,7 @@ VITE_SUPABASE_URL: removed
 @supabase/supabase-js runtime path: unused
 App reads from Aiven Postgres: passed
 Postgres event delivered to browser by polling: passed
-Aiven Kafka agent-bus roundtrip: passed
+Aiven Kafka workflow slot: live passed when configured; cached/warning otherwise
 Smoke test after cutover: passed
 ```
 
@@ -369,9 +369,9 @@ Rows validated: 120/120
 Demo realtime mapped: Supabase channel -> Aiven Postgres app_events -> browser polling
 Production event path validated: Aiven Kafka migration.events
 Postgres event -> browser polling delivery: passed
-Aiven Kafka agent bus events: 7
-Aiven MCP actions: 12
-Kafka events: 9
+Aiven Kafka workflow events: live when configured; cached/warning otherwise
+Aiven action receipts: 12
+Kafka events: live when configured; cached/warning otherwise
 Cost card: Supabase $X/mo -> Aiven $Y/mo
 CTO recommendation: add pooling before the next traffic spike
 
@@ -398,7 +398,7 @@ Final line:
 | 1 | Cold open | Load completed proof screen | None | Judges see the outcome first |
 | 2 | Open PulseWall | None | None | Existing app works |
 | 3 | Open Aiden | Load migration run shell | None | Source/target/status header |
-| 4 | Click `Graduate To Aiven` | Access Broker, Scanner, and Behavior Mapper run | Optional receipt write, Kafka agent-bus events | Behavior map appears |
+| 4 | Click `Graduate To Aiven` | Workspace Setup, Scanner, and Behavior Mapper run | Optional receipt write, Kafka agent-bus events | Behavior map appears |
 | 5 | Automatic | Aiven Operator creates/verifies target resources | Project/service list, Postgres receipt table, Kafka topics | Shadow plane marked ready |
 | 6 | Automatic | Migration Operator applies schema/sample rows | Postgres writes and validation reads, Kafka agent-bus events | Row counts and smoke query pass |
 | 7 | Automatic | Compatibility Surgeon maps channel to Postgres events + browser bridge and validates Kafka agent bus | Postgres event write/read, Kafka topic create, message produce/list | Postgres event polling delivery and Kafka agent-bus roundtrip pass |
@@ -419,7 +419,7 @@ Minimum MVP:
    - `.from(...)`
    - `.rpc(...)`
 5. Behavior map with clear migration paths.
-6. Aiven MCP receipt timeline with tool name, status, risk, and rollback.
+6. Aiven action receipt timeline with tool name, control-plane label, status, risk, and rollback.
 7. Tiny data migration for 2-4 seeded tables.
 8. Aiven Postgres receipt writes and validation reads.
 9. Aiven Kafka topic creation plus produce/read roundtrip.
@@ -434,9 +434,9 @@ Must be real:
 
 - Source scanner over actual files or fixtures.
 - Behavior classification output.
-- Aiven MCP receipts for Postgres and Kafka actions.
+- Aiven action receipts for Postgres and Kafka slots, with MCP/direct-fallback labels.
 - Row-count validation against the target.
-- Kafka event produce/read roundtrip.
+- Kafka event produce/read roundtrip when configured; cached/warning proof otherwise.
 - Aiven Kafka agent-bus events for the workflow timeline.
 - Aiven Postgres `app_events` -> browser polling delivery into the app or a demo browser panel.
 - Final demo app smoke test against the Aiven-backed runtime path.
@@ -481,7 +481,7 @@ This follows the hackathon playbook:
 
 - **Sponsor-needs first:** the story is explicitly how Aiven captures successful Lovable/Supabase apps when they become real startups.
 - **One polished flow:** one-click graduate -> shadow -> validate -> realtime rewrite -> cutover -> report.
-- **Visible sponsor tech:** Aiven MCP receipts, Aiven Postgres validation, Aiven Postgres event delivery, Aiven Kafka agent-bus events, and Aiven Kafka roundtrip are all on screen.
+- **Visible sponsor tech:** Aiven action receipts, Aiven Postgres validation, Aiven Postgres event delivery, and the Aiven Kafka workflow-events slot are all on screen. Kafka is live when configured and cached/warning-labeled otherwise.
 - **Demo over architecture:** the build is a local browser control room with seeded data and a stable happy path, not a broad migration platform.
 - **Honest cuts:** production auth/storage migration, full CDC, and multi-source support are named as out of scope.
 

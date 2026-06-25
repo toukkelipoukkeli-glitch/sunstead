@@ -34,8 +34,9 @@ the path judges see.
 - **Use proven migration primitives.** For production, Aiden should orchestrate `supabase db dump`,
   `pg_dump`/`psql`, or `aiven-db-migrate`. For the hackathon demo, migrate representative
   PulseWall rows and prove counts/smoke queries.
-- **MCP is the control plane, not the bulk pipe.** Aiven MCP is used for service inspection,
-  receipt writes, Kafka topics/events, validation reads, and judge-visible proof.
+- **Aiven control proof is visible and honestly labeled.** The repo has hosted Aiven MCP config, but
+  the current local API runtime uses direct Aiven fallback for live Postgres/Kafka proof actions and
+  labels those receipts as fallback. Real MCP actions can replace the same receipt slots later.
 - **Delete Supabase by moving the scoped runtime path.** Aiven Apps is not required. The rewired app
   talks to Aiven Postgres through backend glue, uses Aiven Postgres `app_events` for demo realtime,
   and shows Aiven Kafka as the agent bus / production event path; auth/storage/RLS are production
@@ -91,19 +92,16 @@ Run one polished path:
 
 ## Open blockers / next work
 
-- **Implement Aiden Control Room.** Add the local browser dashboard for timeline, behavior graph,
-  Aiven shadow plane, receipts, validations, and final report.
-- **Implement local worker state machine.** Keep the demo deterministic:
-  `identify_backend -> scan_repo -> map_behavior -> prepare_aiven -> migrate_sample -> validate -> rewrite_realtime -> commit_cutover -> report`.
-- **Implement provider swap.** PulseWall needs `supabaseProvider` and `aivenProvider`; after cutover,
-  the happy path should use Aiven-backed API calls and Postgres-backed events instead of `supabase-js`.
-- **Wire Aiven proof actions.** Use Aiven MCP for visible service checks, receipt writes, Kafka
-  topic/event actions, and validation reads. Use direct `pg` only for deterministic migration where
-  needed.
+- **Mission 06B workspace framing.** Reframe setup copy as connect/create an Aiven workspace while
+  keeping Henri's pre-connected workspace as the demo truth.
+- **Manual capture.** Browser screenshot QA and short recorded backup still need a local browser or
+  screen recorder; `npm run demo:fallback` already writes local fallback artifacts.
+- **Optional Kafka live proof.** Configure Kafka env and pass `npm run verify:live -- --require-kafka`
+  only if credentials are ready quickly. Otherwise keep Kafka warning/cached and protect Postgres.
+- **Optional real MCP action.** Add one real MCP action receipt if feasible; otherwise keep the direct
+  fallback label visible and do not present fallback rows as live MCP tool calls.
 - **Keep secrets local.** Supabase/Aiven URLs, service keys, Postgres URLs, Kafka credentials, and
   Anthropic keys stay in `.env.local` only.
-- **CTO agent scope.** Ship one or two concrete recommendations from validation or Aiven metrics;
-  do not build a broad ops product.
 
 ## Judge framing
 
@@ -111,5 +109,5 @@ All Aiven judges are product/startup-program oriented, not pure infra reviewers.
 
 > Lovable builds the app. Aiden graduates the data plane to Aiven when the app becomes a company.
 
-Then prove it with Aiven MCP receipts, Postgres validation, Postgres-backed realtime delivery, Aiven
-Kafka agent-bus proof, and the final "Supabase removed from demo runtime" card.
+Then prove it with Aiven action receipts, Postgres validation, Postgres-backed realtime delivery,
+Kafka workflow-event proof when available, and the final "Supabase removed from demo runtime" card.

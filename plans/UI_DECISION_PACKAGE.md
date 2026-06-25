@@ -79,7 +79,7 @@ Design every screen around this arc:
 | Source app | "Production is safe." | Show the original PulseWall app/source path is untouched. |
 | One click | "The product is simple." | Make `Graduate To Aiven` the only obvious primary action. |
 | Behavior scan | "It understands apps, not just tables." | Show Supabase behaviors mapped to migration treatments. |
-| Aiven landing zone | "Aiven is load-bearing." | Show Postgres, Kafka, MCP receipts, risk, rollback. |
+| Aiven landing zone | "Aiven is load-bearing." | Show Postgres, Kafka, Aiven receipts, risk, rollback. |
 | Validation | "This is trustworthy." | Show row counts, smoke checks, and proof sources. |
 | Realtime rewrite | "This is the clever part." | Show Supabase Realtime -> Aiven Postgres events -> browser polling, plus Kafka proof. |
 | Scoped cutover | "They removed Supabase honestly." | Show old path vs new path and production blockers. |
@@ -133,12 +133,13 @@ tables, service states, receipts, checks, and reports.
 Simple route model:
 
 ```text
-/           Sales-style intro or immediate cold-open, depending on demo needs
+/           Sales-style intro, depending on demo needs
 /control    Aiven Console-style Migration Control Room
 ```
 
-For the judged demo, the product can still open directly in the control room. The sales layer exists
-to improve submission video, screenshots, and framing when needed.
+For the judged demo, the product should open directly in the control room. The sales layer exists
+to improve submission video, screenshots, and framing when needed; it must not create a second
+home page inside `/control`.
 
 ## Screen Architecture
 
@@ -195,7 +196,8 @@ Cold-open screen rules:
 - it must show the brand/product name;
 - it must show Aiven Postgres and Kafka above the fold;
 - it must show that production/source was not destructively changed;
-- it must have a clear control to rewind/reset into the one-click run;
+- it must sit inside the real control room rather than gating access to it;
+- the command strip `Graduate To Aiven` action owns the one-click run;
 - it must not look like a placeholder report.
 
 ## Component Hierarchy
@@ -210,7 +212,7 @@ Build these components for Mission 00:
 | `AgentMigrationSpine` | One-click state machine and agent progress | P0 |
 | `BehaviorMap` | Supabase behaviors and migration treatments | P0 |
 | `AivenProofPlane` | Postgres/Kafka/service readiness and MCP proof | P0 |
-| `ReceiptStream` | MCP-style receipts with risk/rollback | P0 |
+| `ReceiptStream` | Aiven action receipts with MCP/direct-fallback labels and risk/rollback | P0 |
 | `ValidationCards` | Row counts, smoke query, app events, Kafka roundtrip | P0 |
 | `RealtimeProof` | Supabase Realtime rewrite to Postgres polling plus Kafka proof | P0 |
 | `CutoverProof` | Old path vs scoped Aiven-backed runtime path | P0 |
@@ -556,7 +558,7 @@ Show:
 
 - Aiven project/service visibility;
 - Postgres ready;
-- Kafka ready;
+- Kafka live or warning/cached;
 - receipt write/read;
 - topic produce/list;
 - live/cached/fixture source.
@@ -624,7 +626,7 @@ Must include:
 - row validations;
 - Postgres event browser delivery;
 - Kafka agent-bus proof;
-- Aiven MCP action count;
+- Aiven action receipt count;
 - production blockers;
 - rollback;
 - cost card;
@@ -722,7 +724,7 @@ Presenter mode is required but visually secondary.
 
 It can expose:
 
-- reset to cold open;
+- reset run state;
 - rewind to start;
 - pause/resume fixture playback;
 - advance next event;

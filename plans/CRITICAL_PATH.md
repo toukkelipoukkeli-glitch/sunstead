@@ -10,9 +10,12 @@ as the entrypoint.
 
 Current next action:
 
-> Execute [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md):
-> configure Aiven credentials and verify Missions 01, 03, and 05 live. After that, finish the
-> Kafka agent-bus panel and UI/rehearsal hardening.
+> Capture final screenshots/recording and rehearse the final pitch from `/setup` through `/control`.
+> Mission 06A Access Broker, Mission 05.6 one-click runtime, Mission 05.7 Anthropic Agent SDK
+> reasoner, Mission 06 control-room hardening, Mission 06B Aiven Workspace Bootstrap framing,
+> Mission 06C Source Intake & Workspace Setup, and Mission 07 rehearsal commands are implemented.
+> The one-click live Aiven Postgres runtime path
+> passes two consecutive rehearsals; Kafka can remain warning-only until credentials are configured.
 
 ## Endgoal Vision: Win
 
@@ -47,6 +50,11 @@ Before starting implementation, read these in order. This file owns the mission 
 9. [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) — exact Aiven proof actions, receipts, Kafka topic contract, and fallback rules.
 10. [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) — preflight gates, rehearsal path, failure fallbacks, and stage runbook.
 11. [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md) — focused M05.5 spec for proving M01, M03, and M05 against live Aiven before more polish.
+12. [`access-broker-permission-ux/README.md`](access-broker-permission-ux/README.md) — product spec for access rights, permission preflight, and the visible setup step before one-click migration.
+13. [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md) — M06B spec for "connect or create Aiven workspace" product framing and demo-safe hardwiring to Henri's workspace.
+14. [`source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) — M06C spec for source selection, source data path, workspace selection, and scope confirmation before the control room.
+15. [`one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) — M05.6 spec for the bounded one-click agent orchestrator and optional Anthropic reasoner.
+16. [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as a text-only Report/CTO Agent.
 
 Do not start broad visual expansion or agent-framework work until the reader can explain the demo-safe runtime path:
 
@@ -64,9 +72,14 @@ Canonical implementation specs:
 | [`CRITICAL_PATH.md`](CRITICAL_PATH.md) | Mission order, dependencies, acceptance gates, and cut lines |
 | [`LOCKED_DECISIONS.md`](LOCKED_DECISIONS.md) | Non-reopened choices: source app, stack, realtime path, Kafka role, scope, and build priority |
 | [`RUNTIME_CONTRACTS.md`](RUNTIME_CONTRACTS.md) | Runtime interfaces, data models, events, tables, and env boundaries |
-| [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) | Sponsor-visible Aiven MCP actions, receipt shape, Postgres checks, Kafka proof |
+| [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) | Sponsor-visible Aiven control actions, receipt shape, Postgres checks, Kafka proof |
 | [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) | Demo preflight, validation gates, fallback modes, and rehearsal timing |
 | [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md) | M05.5 live Aiven verification gate, script contract, pass/fail assertions, and fallback policy |
+| [`access-broker-permission-ux/README.md`](access-broker-permission-ux/README.md) | Access Broker UX, permission ladder, access snapshot contract, and preflight gating |
+| [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md) | Aiven-native account/workspace onboarding story, demo workspace hardwiring rules, and UI copy |
+| [`source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) | Source intake/setup screen, demo profile selection, source data path, workspace mode, and scope confirmation |
+| [`one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) | M05.6 one-click agent runtime, step registry, optional reasoner, and verifier mode |
+| [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) | M05.7 Anthropic Agent SDK report reasoner, SDK restrictions, and proof metadata |
 | [`SPEC_STACK.md`](SPEC_STACK.md) | Which specs exist and when they are ready for code |
 | [`SCAFFOLD_STUB_PLAN.md`](SCAFFOLD_STUB_PLAN.md) | Top-down skeleton plan for contracts, stubs, fixture flow, UI panels, and replacement order |
 | [`UI_DECISION_PACKAGE.md`](UI_DECISION_PACKAGE.md) | Control-room visual direction, screen architecture, component hierarchy, proof labels, and UI quality gates |
@@ -122,13 +135,13 @@ LOCATE: emerging and aligned; ground by building the visible demo shell, then re
 
 Backward target:
 
-> In a live Aiven demo, one click migrates PulseWall's scoped happy path from Supabase behavior to an Aiven-backed runtime path, with visible MCP receipts, Aiven Postgres validation, Aiven Postgres event delivery to the browser, Aiven Kafka agent-bus events, and a final proof package.
+> In a live Aiven demo, one click migrates PulseWall's scoped happy path from Supabase behavior to an Aiven-backed runtime path, with visible Aiven receipts, Aiven Postgres validation, Aiven Postgres event delivery to the browser, a Kafka workflow-events slot that is live when configured or warning/cached otherwise, and a final proof package.
 
 Forward knowns:
 
 - PulseWall exists under `demo/pulsewall/`.
 - Supabase-style behavior is detectable in source and migrations.
-- Aiven MCP is the required sponsor surface.
+- Aiven MCP config is the required sponsor-facing control-plane surface; the current API runtime uses direct Aiven fallback for live proof actions and labels those receipts honestly.
 - Aiven Apps is not available.
 - Backend glue must run locally for the demo.
 - Kafka is kept off the browser-critical path; browser realtime uses Aiven Postgres `app_events` through polling.
@@ -138,7 +151,7 @@ Forward knowns:
 Build the demo shell first, but make it contract-driven and demo-quality, not disposable:
 
 ```text
-fixture demo shell -> MCP/Postgres proof spine -> scanner -> Aiven Postgres data + app_events -> scoped cutover/browser polling -> Kafka agent-bus proof -> UI hardening
+fixture demo shell -> Aiven receipt/Postgres proof spine -> scanner -> Aiven Postgres data + app_events -> scoped cutover/browser polling -> Kafka workflow proof slot -> UI hardening
 ```
 
 The first implementation should make the entire `Graduate To Aiven` story visible with fixture events, including the cold-open outcome screen from `DEMO_FLOW.md`. Every fixture must use the same `RunEvent`, receipt, validation, Kafka-event, and report contracts that live code will later emit.
@@ -159,7 +172,7 @@ Do not start broad cosmetic expansion until live proof replacement has begun. Ke
 For one implementer, build in this order:
 
 ```text
-00 -> 01 -> 02 -> 03 -> 05 -> 05.5 -> 04 -> 06 -> 07
+00 -> 01 -> 02 -> 03 -> 05 -> 05.5 -> 06A -> 05.6 -> 04 -> 06 -> 06B -> 06C -> 07
 ```
 
 Meaning:
@@ -170,9 +183,13 @@ Meaning:
 4. Aiven Postgres data migration and `app_events`;
 5. provider cutover + browser polling proof;
 6. live Aiven verification gate for Missions 01, 03, and 05;
-7. Kafka agent bus proof;
-8. control room UI hardening + final report;
-9. rehearsal hardening.
+7. access broker permission UX;
+8. one-click bounded agent runtime;
+9. Kafka agent bus proof;
+10. control room UI hardening + final report;
+11. Aiven workspace bootstrap framing;
+12. source intake and workspace setup screen;
+13. rehearsal hardening.
 
 For two implementers, Mission 04 can run in parallel after Mission 01. It must not delay Mission 05.
 
@@ -184,7 +201,11 @@ For two implementers, Mission 04 can run in parallel after Mission 01. It must n
   -> 03 Aiven Postgres data migration
   -> 05 Provider cutover + Postgres events
        -> 05.5 Live Aiven verification gate
+       -> 06A Access broker permission UX
+       -> 05.6 One-click agent runtime
        -> 06 Control room UI hardening + final report
+            -> 06B Aiven workspace bootstrap framing
+            -> 06C Source intake and workspace setup
             -> 07 Rehearsal hardening
 
 01 Aiven proof spine
@@ -198,16 +219,21 @@ For two implementers, Mission 04 can run in parallel after Mission 01. It must n
 
 Mission 02 and Mission 04 can run in parallel with the Postgres path, but not at the cost of delaying Mission 05. If there is only one implementer, do Mission 04 after Mission 05. Mission 00 should be completed first so all later work has visible slots to replace.
 
-Mission 05.5 is the live verification gate for Missions 01, 03, and 05. It should run before
-Kafka/UI polish unless another implementer can safely continue Mission 04 in parallel.
+Mission 05.5 is the live verification gate for Missions 01, 03, and 05. Mission 05.6 now makes the
+visible product action match the one-click demo promise. Mission 06A turns the access-rights
+inquiry into a visible product preflight before broad UI polish. Mission 06B upgrades that story
+from credential/access language into Aiven workspace onboarding: connect an existing Aiven account
+or let Aiden create a workspace if none exists. Mission 06C adds the missing source-intake product
+step so PulseWall and Henri's workspace are selected demo profile choices, not invisible hardcoding.
+Kafka live proof can remain warning-only unless credentials are available quickly.
 
 ## Mission 00: Fixture-Backed Demo Shell
 
-Status: DEFINED  
-Gap T: 14  
-Mission T: 14 — would rise if the existing app structure fights the control-room shell  
-A: 95  
-Cone: narrow-deep  
+Status: BUILT
+Gap T: 14
+Mission T: 14 — would rise if the existing app structure fights the control-room shell
+A: 95
+Cone: narrow-deep
 Depends on: `DEMO_FLOW.md`, runtime event contract
 
 Target:
@@ -249,21 +275,21 @@ Kill/fallback:
 
 ## Mission 01: Aiven Proof Spine
 
-Status: DEFINED  
-Gap T: 15  
-Mission T: 15 — would rise if hosted MCP auth or Kafka tool behavior is unstable  
-A: 90  
-Cone: narrow-deep  
+Status: LIVE PG VERIFIED / DIRECT FALLBACK
+Gap T: 15
+Mission T: 15 — would rise if hosted MCP auth or Kafka tool behavior is unstable
+A: 90
+Cone: narrow-deep
 Depends on: Aiven credentials and target project
 
 Target:
 
-Replace the fixture Aiven receipt blocks with a small sponsor-visible live Aiven proof spine. Kafka here is only a smoke proof; Mission 04 owns the full visible Kafka agent-bus panel.
+Replace the fixture Aiven receipt blocks with a small sponsor-visible live Aiven proof spine. The current runtime uses direct Aiven fallback for proof actions and labels those receipts; a real MCP action can replace the same slot later. Kafka here is only a smoke proof; Mission 04 owns the visible Kafka workflow-events panel.
 
 Build:
 
 - load Aiven connection/config from `.env.local`;
-- list/verify Aiven project/services;
+- list/verify Aiven project/services when REST/MCP credentials are available;
 - write one row to Aiven Postgres;
 - read it back;
 - create/verify `migration.events` Kafka topic;
@@ -274,7 +300,7 @@ Acceptance:
 
 - terminal or local API returns project/service status;
 - Aiven Postgres contains a receipt row for the run;
-- one Kafka smoke message roundtrip succeeds;
+- one Kafka smoke message roundtrip succeeds when Kafka credentials are configured, otherwise the Kafka slot is warning/cached;
 - Mission 00 UI shows these as live events instead of fixture events;
 - failure messages are explicit and demo-safe.
 
@@ -282,15 +308,15 @@ Kill/fallback:
 
 - If service creation is flaky, pre-provision and only verify.
 - If Kafka topic creation is flaky, pre-create topic and only produce/list.
-- If MCP wrapper blocks execution, call the same action through the lowest-risk available Aiven client but label it as fallback; keep at least one live MCP read/write if possible.
+- If MCP wrapper blocks execution, call the same action through the lowest-risk available Aiven client and label it as fallback; add one live MCP action only if it is reliable before rehearsal.
 
 ## Mission 02: PulseWall Scanner + Behavior Graph
 
-Status: DEFINED  
-Gap T: 12  
-Mission T: 12 — would rise if source app shifts substantially  
-A: 75  
-Cone: narrow-deep  
+Status: BUILT
+Gap T: 12
+Mission T: 12 — would rise if source app shifts substantially
+A: 75
+Cone: narrow-deep
 Depends on: PulseWall fixture
 
 Target:
@@ -318,11 +344,11 @@ Kill/fallback:
 
 ## Mission 03: Aiven Postgres Data Migration
 
-Status: DEFINED  
-Gap T: 18  
-Mission T: 18 — would rise if schema has Supabase-specific statements that block target restore  
-A: 85  
-Cone: narrow-deep  
+Status: LIVE PG VERIFIED
+Gap T: 18
+Mission T: 18 — would rise if schema has Supabase-specific statements that block target restore
+A: 85
+Cone: narrow-deep
 Depends on: Mission 01
 
 Target:
@@ -354,16 +380,16 @@ Kill/fallback:
 
 ## Mission 04: Kafka Agent Bus Proof
 
-Status: DEFINED  
-Gap T: 16  
-Mission T: 16 — would lower to 10 after live `migration.events` produce/list is visible in the UI  
-A: 90  
-Cone: narrow-deep  
+Status: BUILT / OPTIONAL LIVE CREDS PENDING
+Gap T: 16
+Mission T: 16 — would lower to 10 after live `migration.events` produce/list is visible in the UI
+A: 90
+Cone: narrow-deep
 Depends on: Mission 01
 
 Target:
 
-Replace the fixture Kafka agent-bus panel with real Aiven Kafka `migration.events` produce/list output for the workflow timeline.
+Replace the fixture Kafka agent-bus panel with real Aiven Kafka `migration.events` produce/list output for the workflow timeline when Kafka credentials are available. Without Kafka credentials, keep the same panel as warning/cached and do not block the Postgres runtime path.
 
 Build:
 
@@ -383,15 +409,15 @@ Kill/fallback:
 
 - If Kafka consumer logic is unstable, use produce/list polling instead of a long-lived consumer.
 - If topic creation is unstable, pre-create `migration.events` and only produce/list live.
-- Do not cut Kafka from the demo; demote it to cached only after two failed live rehearsals and keep one smaller live proof if possible.
+- Do not put Kafka on the browser-critical path. If credentials are unavailable, keep the Kafka slot cached/warning-labeled and protect the live Postgres proof.
 
 ## Mission 05: Provider Cutover + Postgres Events
 
-Status: DEFINED  
-Gap T: 24  
-Mission T: 24 — would lower if one visible PulseWall screen loads from Aiven provider and receives one Postgres-backed event  
-A: 95  
-Cone: narrow-deep  
+Status: LIVE PG VERIFIED
+Gap T: 24
+Mission T: 24 — would lower if one visible PulseWall screen loads from Aiven provider and receives one Postgres-backed event
+A: 95
+Cone: narrow-deep
 Depends on: Mission 03
 
 Target:
@@ -426,11 +452,11 @@ Kill/fallback:
 
 ## Mission 05.5: Live Aiven Verification Gate
 
-Status: DEFINED  
-Gap T: 10  
-Mission T: 10 — would rise if Aiven network access, credentials, or service permissions are unstable  
-A: 95  
-Cone: narrow-deep  
+Status: LIVE PG PASSED / KAFKA ENV PENDING
+Gap T: 10
+Mission T: 10 — would rise if Aiven network access, credentials, or service permissions are unstable
+A: 95
+Cone: narrow-deep
 Depends on: Missions 01, 03, and 05 scaffold paths
 
 Target:
@@ -468,13 +494,137 @@ Kill/fallback:
 - If Kafka cannot pass, keep it cached/same-day and continue with the browser-critical Aiven Postgres path.
 - If the full source app display is unstable, prove the scoped runtime through the control-room panel and adapter endpoints.
 
+## Mission 06A: Access Broker Permission UX
+
+Status: LIVE PG VERIFIED
+Gap T: 10
+Mission T: 10 — would rise if access checks need deeper MCP integration than current verifier state
+A: 90
+Cone: narrow-deep
+Depends on: Mission 05.5 live Postgres path
+
+Target:
+
+Make the access-rights inquiry a visible product step before `Graduate To Aiven`.
+
+Detailed spec:
+
+- [`access-broker-permission-ux/README.md`](access-broker-permission-ux/README.md)
+
+Build:
+
+- add an Access Broker panel near the command strip;
+- define typed access checks for repo/source, source data, Aiven MCP, Aiven project, Aiven Postgres, Aiven Kafka, local demo adapter, production Auth, production Storage, and production cutover;
+- represent required, warning, later, and not-requested permissions distinctly;
+- add an access preflight API/state path or derive the first implementation from the existing `access.connected` event;
+- keep `Graduate To Aiven` enabled only when required checks pass;
+- make Kafka/Auth/Storage/production cutover honest non-blocking states, not hidden failures;
+- never expose credentials, connection strings, tokens, or raw env values.
+
+Acceptance:
+
+- first viewport shows that setup is the access grant and the product action is one click;
+- Aiven Postgres read/write access is visibly live verified;
+- Kafka absence appears as warning/cached proof, not as a failed migration;
+- Auth, Storage, and production cutover are clearly not requested for the demo path;
+- the presenter can explain permissions in under 20 seconds;
+- no secrets appear in the UI, terminal output, docs, screenshots, or browser env.
+
+Kill/fallback:
+
+- If live access probing is flaky, show the last verified M05.5 access snapshot as cached and run one smaller live Postgres proof.
+- If backend contract work is too slow, ship a typed fixture/current-env panel first and wire refresh later.
+- Do not build a multi-page onboarding wizard.
+
+## Mission 05.6: One-Click Agent Runtime
+
+Status: LIVE PG VERIFIED
+Gap T: 12
+Mission T: 12 — would rise if the existing run-store functions are hard to compose safely
+A: 90
+Cone: narrow-deep
+Depends on: Mission 05.5 live Postgres path
+
+Target:
+
+Make the visible `Graduate To Aiven` action run the full bounded agent workflow instead of requiring
+separate presenter clicks for scan, proof spine, migration, cutover, Kafka, and report.
+
+Detailed spec:
+
+- [`one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md)
+
+Build:
+
+- add a deterministic one-click orchestrator;
+- define a typed agent-step registry around existing scanner/Aiven/migration/cutover/Kafka functions;
+- make `POST /api/runs/:runId/graduate` call the orchestrator;
+- keep individual proof routes as presenter/debug fallback controls;
+- keep Anthropic/LLM reasoning optional and bounded to summaries/report text only;
+- add `npm run verify:live -- --one-click`.
+
+Acceptance:
+
+- one visible click runs the full migration flow end to end;
+- presenter does not need separate proof buttons during the main demo;
+- live Aiven Postgres path still passes;
+- one-click verifier passes with `npm run verify:live -- --one-click`;
+- Kafka remains warning-only when env is missing;
+- Anthropic/LLM failure cannot block the run;
+- fixture/live/cached labels remain honest.
+
+Kill/fallback:
+
+- If the orchestrator is unstable, keep separate proof buttons as fallback and replay the last verified live run.
+- If Anthropic integration slows work, cut it and keep deterministic agent steps.
+- If Kafka remains unavailable, keep it cached/skipped and protect the live Postgres cutover proof.
+
+## Mission 05.7: Anthropic Agent SDK Report Reasoner
+
+Status: LIVE VERIFIED
+Gap T: 6
+Mission T: 6 — would rise if the local Claude Code executable is unavailable
+A: 90
+Cone: narrow-deep
+Depends on: Mission 05.6 one-click runtime
+
+Target:
+
+Use Anthropic Agent SDK for the bounded Report/CTO Agent without giving the LLM authority over
+Aiven, Postgres, Kafka, files, shell, or MCP.
+
+Detailed spec:
+
+- [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md)
+
+Build:
+
+- install `@anthropic-ai/claude-agent-sdk`;
+- implement an SDK-backed `AgentReasoner`;
+- restrict SDK execution to one text-only turn with no built-in tools, MCP config, or local settings sources;
+- keep deterministic fallback;
+- store reasoner metadata in `proof.package.generated.details`;
+- verify one-click proof package records `anthropic_agent_sdk` when the SDK succeeds.
+
+Acceptance:
+
+- `npm run typecheck` passes;
+- `npm run verify:live -- --one-click` passes and reports `agent sdk reasoner: Anthropic Agent SDK produced proof text`;
+- deterministic fallback still completes the run if the SDK fails;
+- no secrets are exposed to the browser, terminal, docs, or committed files.
+
+Kill/fallback:
+
+- If the bundled SDK binary fails, use `CLAUDE_CODE_EXECUTABLE` or `~/.local/bin/claude`.
+- If the SDK remains unreliable on stage, set `AGENT_REASONER=off` and use deterministic report text.
+
 ## Mission 06: Control Room UI Hardening + Final Report
 
-Status: DEFINED  
-Gap T: 18  
-Mission T: 18 — would rise if underlying events are not ready  
-A: 80  
-Cone: narrow-deep  
+Status: BUILT / LIVE PG VERIFIED
+Gap T: 18
+Mission T: 18 — would rise if underlying events are not ready
+A: 80
+Cone: narrow-deep
 Depends on: Missions 01-05 enough to replay events
 
 Target:
@@ -510,13 +660,108 @@ Kill/fallback:
 - If live state streaming is unstable, use replayable run events from a JSON fixture after at least one live proof action.
 - Do not let cosmetic expansion delay Mission 05, but keep the UI quality bar intact throughout the build.
 
+## Mission 06B: Aiven Workspace Bootstrap Framing
+
+Status: BUILT / LIVE PG VERIFIED
+Gap T: 4
+Mission T: 4 — would rise only if implemented as real signup/billing automation
+A: 95
+Cone: narrow-deep
+Depends on: Missions 06A and 06
+
+Target:
+
+Reframe setup from "grant Aiden credentials" to "connect or create an Aiven workspace." The product
+story is that Aiden brings the app into Aiven's control plane. If the user already has Aiven, Aiden
+connects to that workspace. If the user does not, Aiden can create the Aiven workspace during setup.
+
+Detailed spec:
+
+- [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md)
+
+Demo truth:
+
+- The hackathon demo uses Henri's pre-connected Aiven workspace.
+- The workspace is wired through local `.env.local` values and Aiven MCP OAuth.
+- The UI may hardcode a safe workspace label such as `Henri demo workspace`.
+- The repo must never hardcode raw credentials, tokens, passwords, connection strings, or Kafka secrets.
+
+Build:
+
+- update first-screen copy from access/credential-first language to Aiven workspace language;
+- keep the existing `AccessSnapshot` and permission gates under the hood;
+- show `Aiven workspace: connected` and `Aiven account: connected`;
+- include a line such as `No Aiven account? Aiden can create a workspace during setup.`;
+- label the demo honestly as `pre-connected demo workspace`;
+- preserve `Production cutover: not requested`;
+- do not implement real account creation before rehearsal.
+
+Acceptance:
+
+- judges understand Aiden as an Aiven-native workspace operator;
+- `/setup` makes the source app, source data path, Aiven workspace, and migration scope explicit
+  before judges reach the control room;
+- the setup story is "connect or create Aiven workspace," not "paste credentials";
+- Henri's account is described as the pre-connected demo workspace;
+- no secret values appear in docs, UI, terminal output, screenshots, committed files, or examples;
+- `npm run verify:live -- --one-click` still passes after any copy/UI change.
+
+Kill/fallback:
+
+- If UI time is tight, update only the Access Broker heading/copy and presenter script.
+- If asked whether account creation is implemented, say the demo uses a pre-connected account and the product path is create/connect workspace.
+- Do not build signup, billing, account provisioning, or new Aiven organization APIs during the hackathon.
+
+## Mission 06C: Source Intake & Workspace Setup
+
+Status: BUILT / LIVE PG VERIFIED
+Gap T: 5
+Mission T: 5 — would rise if implemented as real GitHub OAuth/upload/import
+A: 95
+Cone: narrow-deep
+Depends on: Missions 06B and 06
+
+Target:
+
+Add the product step before the control room: select the app source, source data path, Aiven
+workspace mode, and migration scope. PulseWall and Henri's pre-connected workspace should appear as
+selected demo profile choices, not hidden assumptions.
+
+Detailed spec:
+
+- [`source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md)
+
+Build:
+
+- add `/setup` as the default entry screen;
+- show source choices: PulseWall demo app, GitHub repo, Lovable export;
+- show source data choices: seeded demo data, Supabase DB URL/read-only access, CSV/Lovable Cloud export;
+- show Aiven workspace choices: Henri pre-connected workspace, connect existing workspace, create new workspace;
+- show migration scope: shadow migration, scoped demo cutover, production cutover not requested;
+- click `Continue to Control Room` to enter `/control`;
+- keep GitHub/upload/Aiven account creation as visible product paths, not implemented paths;
+- keep existing control-room runtime and `AccessSnapshot` gates unchanged.
+
+Acceptance:
+
+- `/setup` exists and is the default entry surface;
+- PulseWall/Henri workspace are visible selected demo choices;
+- unimplemented product paths are visible and honestly labeled;
+- no secrets appear in UI or docs;
+- `npm run verify:live -- --one-click` still passes after the setup screen lands.
+
+Kill/fallback:
+
+- If time is tight, implement a static React setup page only and route to `/control`.
+- Do not build OAuth, upload parsing, Lovable Cloud import, Aiven signup, or real source DB input before capture.
+
 ## Mission 07: Rehearsal Hardening
 
-Status: DEFINED  
-Gap T: 12  
-Mission T: 12 — would rise if any live dependency is not reproducible  
-A: 95  
-Cone: narrow-deep  
+Status: DEFINED
+Gap T: 12
+Mission T: 12 — would rise if any live dependency is not reproducible
+A: 95
+Cone: narrow-deep
 Depends on: all previous missions
 
 Target:
@@ -541,4 +786,4 @@ Acceptance:
 
 Kill/fallback:
 
-- If a live component fails twice during rehearsal, demote it to recorded/cached proof and keep one smaller live MCP/Kafka action.
+- If a live component fails twice during rehearsal, demote it to recorded/cached proof and keep one smaller live Aiven Postgres action.

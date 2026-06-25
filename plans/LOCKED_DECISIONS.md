@@ -153,16 +153,25 @@ Decision:
 
 Final rehearsal/judging must include at least:
 
-- one live Aiven project/service visibility action;
 - one live Aiven Postgres receipt write;
 - one live Aiven Postgres validation/read;
-- one live Kafka `migration.events` produce/list roundtrip.
+- one live scoped runtime read/write/event path through Aiven Postgres;
+- one visible Aiven control-plane receipt stream with each row labeled `live`, `cached`, or `fixture`;
+- one visible Kafka `migration.events` proof slot.
+
+Kafka is live only when Kafka credentials are configured and the verifier passes, or when the final
+run is invoked with `--require-kafka`. Without Kafka credentials, the Kafka proof remains cached or
+warning-labeled and must not block the Postgres cutover path.
+
+The current API runtime may use direct Aiven REST/Postgres/Kafka fallback for proof actions. Those
+receipts must be labeled as direct fallback, not presented as live MCP tool execution. If a real MCP
+action is added before judging, it can replace the same receipt slots.
 
 Everything else may be fixture/cached if clearly labeled.
 
 Why:
 
-- This satisfies sponsor-visible MCP/Aiven depth without making every card live-critical.
+- This protects the live demo while keeping sponsor-visible Aiven depth honest.
 
 ## D11: Cost Card And CTO Recommendation
 
@@ -239,5 +248,5 @@ Decision:
 Why:
 
 - Judges need to understand the autonomous migration in seconds.
-- A polished control room makes MCP receipts, Postgres validation, Kafka agent-bus events, and scoped cutover feel like one product.
+- A polished control room makes Aiven receipts, Postgres validation, Kafka workflow events, and scoped cutover feel like one product.
 - The UI is how the behavior migration claim becomes visible.

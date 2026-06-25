@@ -192,7 +192,7 @@ Visual:
 Proof strip:
   Aiven Postgres
   Kafka migration.events
-  MCP receipts
+  Aiven action receipts
   Scoped rollback
 ```
 
@@ -203,7 +203,7 @@ Sales sections below the fold:
 1. **Service cards**
    - `Postgres`: app data and `app_events`.
    - `Kafka`: workflow events and production event-path proof.
-   - `MCP receipts`: project/service actions and audit trail.
+   - `Action receipts`: project/service actions, direct fallback labels, and audit trail.
 
 2. **Before/after comparison**
    - Before: Lovable UI -> Supabase client -> Supabase Postgres/Realtime.
@@ -314,13 +314,17 @@ Workflow events: Kafka migration.events
 Production source: unchanged
 Blockers: Auth / Storage / RLS review
 
-[Rewind to one click]
+One-click flow:
+grant access -> scan behavior -> create Aiven landing zone -> migrate and validate -> cut over scoped runtime
 ```
 
 Changes from current UI:
 
 - remove "autonomous step" from visible body copy;
 - change `Agent bus` to `Workflow events`;
+- include a compact one-click flow guide in the cold-open, but do not turn `/control` into a setup/onboarding page;
+- keep the control room visible immediately; the cold-open is an outcome summary section, not a separate gated home screen;
+- use the command strip `Graduate To Aiven` button for the one-click run, not a second button that reveals the real product;
 - make the right side look like an operational summary table, not four equal decorative cards;
 - keep `fixture/live/cached` label visible.
 
@@ -420,7 +424,7 @@ Render as service readiness rows, not a loud card grid:
 | Aiven project | service visibility | live/cached/fixture | ready |
 | Postgres | receipt write/read | live/cached/fixture | ready |
 | Kafka | topic produce/list | live/cached/fixture | ready |
-| MCP receipts | action log | live/cached/fixture | recording |
+| Action receipts | action log with control-plane label | live/cached/fixture | recording |
 
 Rules:
 
@@ -642,11 +646,11 @@ Sales page:
 
 Control room:
 
-- cold open starts completed;
-- `Rewind to one click` shows the run before migration;
+- `/control` opens directly to the real control room;
+- the completed cold-open outcome is embedded as the top summary section;
 - `Graduate To Aiven` starts fixture/live run;
 - `Run live proof` is a presenter action;
-- reset returns to cold open;
+- reset returns the run state to idle without hiding the control room;
 - pause/step stay presenter-only.
 
 ## State Labels
@@ -706,7 +710,7 @@ This spec is implemented when:
 - `/control` renders the existing migration run without broken API behavior;
 - the sales page has a black hero, green CTA, and product-relevant visual;
 - the control room has white/muted Aiven Console-style surfaces;
-- Aiven Postgres, Kafka `migration.events`, and MCP receipts are visible within the first viewport or one short scroll;
+- Aiven Postgres, Kafka `migration.events`, and Aiven action receipts are visible within the first viewport or one short scroll;
 - visible UI copy says `Execution timeline`, `Aiven landing zone`, `Workflow events`, and `Migration readiness memo`;
 - visible UI does not lead with "AI", "agent", "autonomous", or "proof package";
 - fixture/live/cached labels remain visible;

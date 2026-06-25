@@ -4,11 +4,21 @@ Date: 2026-06-25
 
 ## Purpose
 
-This document defines exactly how the demo proves Aiven MCP depth.
+This document defines exactly how the demo proves Aiven control-plane depth.
 
 MCP is the control plane and proof layer. It is not the bulk data pipe.
 
-Mission 00 may render fixture Aiven receipts to lock the demo flow. Final rehearsal and judging must include at least the required live proof actions below, or clearly label cached/fallback proof.
+Mission 00 may render fixture Aiven receipts to lock the demo flow. Final rehearsal and judging must
+include the required live Aiven Postgres proof actions below, or clearly label cached/fallback proof.
+
+Current implementation truth:
+
+- the repo contains the hosted Aiven MCP configuration and the verifier checks that it is present;
+- the local API runtime currently executes live Aiven proof through direct Aiven REST/Postgres/Kafka
+  fallback code;
+- receipt rows from that path are labeled `direct_aiven_fallback`;
+- the UI must not imply that direct fallback rows are live MCP tool calls;
+- a later real MCP action can replace the same receipt slots without changing the demo flow.
 
 ## MCP Server Configuration
 
@@ -41,7 +51,8 @@ Keep the raw MCP server descriptor at the repo root too, for tools that expect J
 }
 ```
 
-This is the primary control-plane path for live Aiven proof actions.
+This is the primary configured MCP path. The current API runtime still uses direct Aiven fallback for
+live proof actions until a real MCP action is added to the local worker.
 
 Security rule:
 
@@ -55,12 +66,15 @@ At least these must be real during the final demo or rehearsal:
 
 | Proof | Action | UI evidence |
 | --- | --- | --- |
-| Project/service visibility | list project/services | Aiven shadow plane card |
 | Postgres write | insert migration run or receipt | receipt stream |
 | Postgres read | read validation count or receipt | validation card |
-| Kafka topic | create or verify topic | Kafka card |
-| Kafka produce | publish agent-bus / production event-bus proof event | agent bus card |
-| Kafka list/read | show event observed | roundtrip validation |
+| Scoped runtime read | read migrated posts/leaderboard | source/runtime panel |
+| Scoped runtime write | insert reaction and `app_events` row | realtime proof |
+| Browser event delivery | read `/api/events/recent` after write | realtime proof |
+| Kafka slot | live roundtrip when configured; cached/warning when absent | workflow events card |
+
+MCP-specific project/service/Kafka tool calls are preferred if available, but they are not allowed to
+block the browser-critical live Aiven Postgres proof. Direct fallback must remain visibly labeled.
 
 ## Preferred MCP Tool Names
 
@@ -166,7 +180,7 @@ Fixture mode rule:
 - Fixture receipts are acceptable for Mission 00 and early UI development.
 - Fixture receipts must carry `source: "fixture"` in the UI/event model.
 - Fixture receipts are not enough for sponsor proof.
-- As soon as Mission 01 lands, replace at least one Postgres receipt and one Kafka message in the same UI slots with `source: "live"` events.
+- As soon as Mission 01 lands, replace at least one Postgres receipt in the same UI slot with `source: "live"`. Kafka is `live` only when credentials are configured; otherwise keep it warning/cached.
 
 If Aiven/Kafka is slow:
 
@@ -181,5 +195,6 @@ This contract is satisfied when:
 
 - at least one receipt row is live-written to Aiven Postgres;
 - at least one validation read comes from Aiven Postgres;
-- at least one Kafka message is live-produced and observed;
-- the UI shows the tool/intent/risk/rollback for each visible Aiven action.
+- the scoped adapter reads, writes, and reads back an `app_events` row through Aiven Postgres;
+- Kafka is live-produced and observed when credentials are configured, otherwise shown as warning/cached;
+- the UI shows the tool/intent/risk/rollback and control-plane label for each visible Aiven action.

@@ -4,7 +4,7 @@ Date: 2026-06-25
 
 Mission ID: `M05.5`
 
-Status: DEFINED
+Status: LIVE PG PASSED / KAFKA ENV PENDING
 
 ## Hackathon Frame
 
@@ -29,7 +29,7 @@ local API -> Aiven Postgres -> local Aiden adapter -> browser API endpoints
 
 Kafka remains a sponsor-visible proof path, but it is not allowed to block the browser-critical runtime cutover.
 
-The control-plane proof should use the hosted Aiven MCP server configured for Codex:
+The control-plane setup should include the hosted Aiven MCP server configured for Codex:
 
 ```toml
 [mcp_servers.aiven]
@@ -59,6 +59,10 @@ The repo also keeps the raw MCP server descriptor for tools that expect JSON MCP
 ```
 
 `allow_secrets=true` is acceptable for the local demo operator, but every script must redact secrets from output.
+
+Current implementation truth: the verifier checks MCP config/OAuth, but the local API runtime proves
+Aiven Postgres through direct Aiven fallback code. Those receipt rows must remain labeled as fallback
+unless a real MCP action is added.
 
 ## Position In Critical Path
 

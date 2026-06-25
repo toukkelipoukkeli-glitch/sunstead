@@ -85,7 +85,7 @@ In the UI, setup should look like a short "Connect Sources" screen, not a comple
 [x] Supabase source connected
 [x] Aiven project connected
 [x] Aiven Postgres ready
-[x] Aiven Kafka ready
+[!] Aiven Kafka optional; live when configured
 [ ] Auth adapter configured later
 [ ] Storage adapter configured later
 
@@ -406,7 +406,7 @@ Output:
 ```text
 Aiven Shadow Plane
 Postgres: ready
-Kafka: ready
+Kafka: live when configured; cached/warning otherwise
 Receipts: recording
 App runtime: unchanged
 ```
@@ -584,7 +584,7 @@ Tables shadowed: 4/4
 Rows validated: 120/120
 Demo realtime mapped: Supabase channel -> Aiven Postgres app_events -> browser polling
 Kafka agent-bus roundtrip: passed
-Aiven MCP actions: 12
+Aiven action receipts: 12
 Supabase runtime dependency: removed from demo path
 
 Production blockers:
@@ -610,7 +610,7 @@ Use agents as specialists around a state machine. Do not let a free-form agent i
 | Behavior Analyst Agent | Classify dependencies | behavior rules, LLM reasoning | behavior graph |
 | Aiven Architect Agent | Choose target Aiven shape | Aiven MCP, docs lookup | landing-zone plan |
 | Migration Operator Agent | Execute data/schema movement | `supabase db dump`, `pg_dump`, `psql`, `aiven-db-migrate` | migrated target |
-| Aiven Operator Agent | Perform Aiven MCP actions | Aiven MCP Postgres/Kafka tools | MCP receipts |
+| Aiven Operator Agent | Perform Aiven control actions | Aiven MCP when available; direct fallback receipts otherwise | Aiven receipts |
 | Compatibility Surgeon Agent | Generate app/backend adapter changes | code scanner, patch generator, LLM | code diff/artifacts |
 | Validation Auditor Agent | Prove migration quality | row counts, smoke queries, Kafka roundtrip | validation report |
 | Repair Agent | Fix generated SQL/code after test failures | sandbox tests, bounded patches | repaired artifact |
@@ -739,7 +739,7 @@ The UI should make the one-click operator visible:
 ```text
 [ Existing App ]        [ Agent Timeline ]          [ Aiven Shadow Plane ]
  Lovable/Supabase        Access Broker  ok           Postgres ready
- still running           Discovery      ok           Kafka ready
+ still running           Discovery      ok           Kafka optional
                           Behavior Map   ok           Receipts writing
                           Aiven Operator ok
                           Migration      running

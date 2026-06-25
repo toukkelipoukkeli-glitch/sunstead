@@ -257,9 +257,11 @@ Output:
 
 ## MCP Usage Plan
 
-Aiven MCP should be the visible control plane.
+Aiven MCP should be the visible control plane when it is available and reliable. Current implementation
+uses direct Aiven fallback for live API proof and labels those rows as fallback; a real MCP action can
+replace the same receipt slot later.
 
-Minimum live MCP actions:
+Preferred live MCP actions:
 
 - `aiven_project_list`
 - `aiven_service_list`
@@ -359,7 +361,7 @@ Demo flow:
    - `Rows validated: 120`
    - `Behaviors migrated: data, realtime`
    - `Behaviors needing adapter: auth, storage`
-   - `Aiven MCP actions: 12`
+   - `Aiven action receipts: 12`
    - `Rollback ready`
 
 ## Flashiest Moment
@@ -559,7 +561,7 @@ Mitigation:
 
 Mitigation:
 
-- make Kafka events and MCP receipts visible;
+- make Kafka events and Aiven receipts visible, including MCP/direct-fallback labels;
 - show which agent made each decision;
 - show risk level and rollback for each write.
 

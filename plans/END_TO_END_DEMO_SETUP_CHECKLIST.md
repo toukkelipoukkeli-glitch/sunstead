@@ -30,7 +30,7 @@ Kafka is later Aiven-side proof only. Do not block the scaffold, Aiven Postgres 
 - [ ] Confirm browser for judging.
 - [ ] Confirm network fallback: phone hotspot or offline fixture mode.
 - [ ] Confirm Aiven account access.
-- [ ] Confirm whether Aiven MCP is available from the local environment.
+- [ ] Confirm whether Aiven MCP is available from the local environment; if not, keep direct Aiven fallback labels visible.
 - [ ] Confirm project `.codex/config.toml` has `[mcp_servers.aiven]` with `https://mcp.aiven.live/mcp?allow_secrets=true`.
 - [ ] Confirm root `.mcp.json` points at `https://mcp.aiven.live/mcp?allow_secrets=true`.
 - [ ] Confirm Aiven project name to use.
@@ -59,11 +59,11 @@ The first end-to-end run is fixture-only.
 
 - [ ] Cold-open outcome renders first.
 - [ ] `Graduate To Aiven` is the only obvious primary action.
-- [ ] Clicking it plays the full fixture `RunEvent[]`.
+- [ ] Clicking it runs the current one-click path, or `AGENT_RUN_MODE=fixture` / `/graduate-fixture` plays the offline fixture rail.
 - [ ] Manual presenter controls can reset, pause, and advance.
 - [ ] Source app panel shows PulseWall before path.
 - [ ] Behavior map shows tables, realtime, auth, storage, RLS, RPC/edge, pgvector.
-- [ ] Aiven shadow plane shows fixture Postgres, Kafka, and MCP receipts.
+- [ ] Aiven shadow plane shows fixture Postgres, Kafka, and Aiven action receipts.
 - [ ] Validation cards show row counts and smoke checks.
 - [ ] Realtime proof shows Supabase Realtime -> Aiven Postgres `app_events` -> browser polling.
 - [ ] Kafka panel shows fixture `migration.events` agent-bus events.
@@ -76,7 +76,8 @@ The first end-to-end run is fixture-only.
 Run these after Mission 00 endpoints exist:
 
 - [ ] `POST /api/runs` creates a run.
-- [ ] `POST /api/runs/:runId/graduate` starts playback.
+- [ ] `POST /api/runs/:runId/graduate` starts the bounded one-click path.
+- [ ] `POST /api/runs/:runId/graduate-fixture` starts explicit fixture playback for offline rehearsal.
 - [ ] `GET /api/runs/:runId` returns derived run state.
 - [ ] `GET /api/runs/:runId/report` returns final report data.
 - [ ] `GET /api/posts` returns fixture migrated posts.
@@ -146,12 +147,16 @@ AIVEN_KAFKA_PASSWORD=
 
 # Optional source app live mode
 SOURCE_SUPABASE_URL=
+SOURCE_SUPABASE_DB_URL=
+SOURCE_SUPABASE_TABLES=
 SOURCE_SUPABASE_ANON_KEY=
 SOURCE_SUPABASE_SERVICE_ROLE_KEY=
 
 # Optional summaries/report text only
 ANTHROPIC_API_KEY=
-ENABLE_LLM_SUMMARIES=false
+AGENT_REASONER=off
+ANTHROPIC_MODEL=sonnet
+CLAUDE_CODE_EXECUTABLE=
 ```
 
 ## Kafka Setup Later
@@ -203,6 +208,9 @@ Check before calling Mission 00 done:
 
 Run in this order:
 
+- [ ] `npm run demo:preflight` passes.
+- [ ] `npm run demo:reset` passes.
+- [ ] `npm run demo:fallback` writes local fallback artifacts.
 - [ ] Fixture-only full run.
 - [ ] Fixture run with presenter pause/reset controls.
 - [ ] Aiven Postgres receipt write/read live.
@@ -212,6 +220,7 @@ Run in this order:
 - [ ] Kafka smoke proof, only after Postgres path works.
 - [ ] Final report with mixed `live/cached/fixture` values clearly labeled.
 - [ ] Full four-minute presentation once.
+- [ ] `npm run demo:rehearse` passes two live one-click runs consecutively.
 - [ ] Full four-minute presentation twice consecutively.
 
 ## Final Go / No-Go

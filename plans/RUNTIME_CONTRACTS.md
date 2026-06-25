@@ -14,7 +14,7 @@ Local Aiden API / worker
   -> state machine
   -> fixture run player
   -> scanner
-  -> Aiven MCP wrapper
+  -> Aiven MCP config + direct Aiven fallback proof wrapper
   -> Postgres migration/validation
   -> Kafka produce/list for agent bus
   -> Postgres events polling bridge, SSE optional
@@ -66,6 +66,55 @@ type RunEvent = {
 
 UI state should be derived from an append-only `RunEvent[]` stream. Do not hardwire separate UI paths for fixture and live mode.
 
+Access preflight snapshot shape:
+
+```ts
+type AccessCheckStatus =
+  | "ready"
+  | "connected"
+  | "live_verified"
+  | "warning"
+  | "blocked"
+  | "not_requested"
+  | "later"
+
+type AccessCheck = {
+  id:
+    | "repo_source"
+    | "source_data"
+    | "aiven_mcp"
+    | "aiven_project"
+    | "aiven_postgres"
+    | "aiven_kafka"
+    | "demo_adapter"
+    | "production_auth"
+    | "production_storage"
+    | "production_cutover"
+  label: string
+  scope: string
+  minimumPermission: string
+  status: AccessCheckStatus
+  source: "fixture" | "live" | "cached"
+  requiredForGraduate: boolean
+  proof: string
+  safeToShowDetails?: Record<string, unknown>
+}
+
+type AccessSnapshot = {
+  runId: string
+  mode: "shadow_migration" | "fixture" | "cached"
+  canGraduate: boolean
+  blockers: string[]
+  warnings: string[]
+  checks: AccessCheck[]
+  createdAt: string
+}
+```
+
+`RunSnapshot` includes `accessSnapshot`. `Graduate To Aiven` is enabled only when
+`accessSnapshot.canGraduate` is true. Kafka warning, production Auth, production Storage, and
+production cutover are non-blocking for the scoped demo path.
+
 ## Fixture Mode Contract
 
 Mission 00 uses fixture data to render the entire demo flow before live integrations exist.
@@ -74,7 +123,7 @@ Fixture files should cover:
 
 - full run event stream;
 - behavior graph;
-- Aiven MCP receipts;
+- Aiven action receipts with MCP/direct-fallback labels;
 - Kafka agent bus events;
 - validation checks;
 - realtime rewrite proof through Postgres events;
@@ -113,13 +162,16 @@ Local Aiden API:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/runs` | Create/reset a migration run |
-| `POST` | `/api/runs/:runId/graduate` | Start the one-click flow |
+| `POST` | `/api/runs/:runId/graduate` | Start the bounded one-click agent workflow |
+| `POST` | `/api/runs/:runId/graduate-fixture` | Explicit offline fixture fallback for rehearsal |
 | `GET` | `/api/runs/:runId` | Current run state |
 | `GET` | `/api/runs/:runId/events` | SSE stream for control room |
 | `GET` | `/api/runs/:runId/report` | Final proof package |
+| `POST` | `/api/runs/:runId/access-preflight` | Refresh access checks, update `access.connected`, and return a secret-safe `accessSnapshot` |
 | `POST` | `/api/runs/:runId/proof-spine` | Run the Aiven project/Postgres/Kafka proof spine and replace proof events |
 | `POST` | `/api/runs/:runId/source-scan` | Scan PulseWall source/migrations and replace the behavior graph |
 | `POST` | `/api/runs/:runId/data-migration` | Create/load/validate the scoped PulseWall dataset in Aiven Postgres |
+| `POST` | `/api/runs/:runId/kafka-agent-bus` | Publish/verify workflow events through the Kafka agent-bus proof, or cached warning when Kafka env is absent |
 | `POST` | `/api/runs/:runId/provider-cutover` | Smoke test and switch the scoped adapter to Aiven Postgres when configured |
 | `POST` | `/api/runs/:runId/step/:stepName` | Hidden/manual presenter control |
 
@@ -268,14 +320,24 @@ Cutover means swapping the provider for the scoped demo path, not migrating prod
 
 Use `.env.local`; never commit real values.
 
-Required for live Aiven proof mode:
+Required for live Aiven Postgres proof mode:
+
+```text
+AIVEN_POSTGRES_URL=
+```
+
+Recommended for project/service visibility:
 
 ```text
 AIVEN_TOKEN=
 AIVEN_PROJECT=
 AIVEN_PG_SERVICE=
+```
+
+Optional for Kafka proof:
+
+```text
 AIVEN_KAFKA_SERVICE=
-AIVEN_POSTGRES_URL=
 AIVEN_KAFKA_BOOTSTRAP_SERVERS=
 AIVEN_KAFKA_USERNAME=
 AIVEN_KAFKA_PASSWORD=
@@ -285,15 +347,22 @@ Optional:
 
 ```text
 ANTHROPIC_API_KEY=
+AGENT_REASONER=off|anthropic
+ANTHROPIC_MODEL=
+CLAUDE_CODE_EXECUTABLE=
 SOURCE_SUPABASE_URL=
+SOURCE_SUPABASE_DB_URL=
+SOURCE_POSTGRES_URL=
+SOURCE_SUPABASE_TABLES=
+SOURCE_POSTGRES_TABLES=
+SOURCE_COPY_LIMIT=
 SOURCE_SUPABASE_ANON_KEY=
 SOURCE_SUPABASE_SERVICE_ROLE_KEY=
 DEMO_MODE=live|fixture
 DEMO_RUN_ID=
-ENABLE_LLM_SUMMARIES=true|false
 ```
 
-Source Supabase keys are required only when running the original Supabase app live or copying from a real source project. Fixture mode and seeded Aiven demo migration do not require them.
+Source Supabase keys are required only when running the original Supabase app live. Generic source-data shadow copy uses `SOURCE_SUPABASE_DB_URL` or `SOURCE_POSTGRES_URL` plus an explicit `SOURCE_SUPABASE_TABLES`/`SOURCE_POSTGRES_TABLES` allowlist. Fixture mode and seeded Aiven demo migration do not require them.
 
 ## Secrets Rule
 

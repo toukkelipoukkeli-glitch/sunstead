@@ -456,8 +456,8 @@ Live missions replace individual agent internals, not the module shape.
 | `SourceAppPanel` | fixture/source app state | Old path and source behaviors. |
 | `AgentTimeline` | `RunEvent[]` | Agents progressing through the one-click run. |
 | `BehaviorMap` | `BehaviorFinding[]` | Tables, realtime, auth, storage, RLS, RPC/edge, pgvector. |
-| `AivenShadowPlane` | receipts + service status | Postgres ready, Kafka ready, receipts recording. |
-| `ReceiptStream` | `AivenReceipt[]` | MCP-style actions with risk and rollback. |
+| `AivenShadowPlane` | receipts + service status | Postgres ready, Kafka optional/warning, receipts recording. |
+| `ReceiptStream` | `AivenReceipt[]` | Aiven actions with control-plane labels, risk, and rollback. |
 | `KafkaAgentBus` | agent-bus events | `migration.events` workflow events. |
 | `RealtimeProof` | validation + app events | Supabase Realtime -> Postgres `app_events` -> browser polling, plus Kafka prod path proof. |
 | `CutoverProof` | provider state | Old path vs new scoped runtime path. |
@@ -487,13 +487,13 @@ Use restrained colors and high contrast. Avoid making the UI look like generic S
 
 The scaffold enables this replacement plan:
 
-1. Replace fixture Aiven project/service check with live MCP/Aiven check.
+1. Replace fixture Aiven project/service check with a live Aiven check and label whether it is MCP or direct fallback.
 2. Replace fixture Postgres receipt write/read with live Aiven Postgres receipt.
-3. Replace fixture Kafka smoke proof with one live `migration.events` topic/message produce-list receipt.
+3. Replace fixture Kafka smoke proof with one live `migration.events` topic/message produce-list receipt when Kafka credentials are configured.
 4. Replace fixture scanner output with deterministic scan of `demo/pulsewall/`.
 5. Replace fixture data migration with live Aiven Postgres tables and row checks.
 6. Replace fixture adapter posts/reactions/events with Aiven Postgres reads/writes.
-7. Replace fixture Kafka agent-bus panel with full live `migration.events` workflow produce/list.
+7. Replace fixture Kafka agent-bus panel with full live `migration.events` workflow produce/list when configured; otherwise keep warning/cached proof.
 8. Replace fixture final report values with live/cached mixed proof.
 
 Mission labels:
@@ -527,7 +527,7 @@ The scaffold is complete when:
 
 ## What Not To Build In The Scaffold
 
-- real Aiven MCP calls;
+- real Aiven MCP calls unless they are available and reliable;
 - real Supabase copy;
 - full `pg_dump`/restore;
 - Kafka consumer bridge;
