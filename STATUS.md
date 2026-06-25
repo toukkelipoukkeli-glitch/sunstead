@@ -6,26 +6,44 @@ Quick orientation. Full spec in [idea.md](idea.md); judge profiles + talking poi
 ## What we're building (one line)
 
 **Lovable → Aiven behavior migrator + "Aiven, your CTO" agent.** When a vibe-coded Lovable
+<<<<<<< HEAD
 app blows up, an agent graduates its data plane off Supabase onto Aiven — migrates the data,
 **rewrites realtime behavior to Aiven Kafka**, and rewires the app onto Aiven's data plane so
 Supabase is deleted from the stack, verifies the cutover, and then stays
 on as a CTO agent that watches the app and says what to do next. Aiven challenge = agentic
 workflows on Aiven infra via the **Aiven MCP**.
+=======
+app blows up, an agent graduates its data plane off Supabase onto Aiven — first by building a safe
+shadow plane, then by cutting over the scoped demo runtime so **Supabase is gone**. It migrates the
+data, **rewrites realtime behavior to Aiven Kafka**, deploys or runs the replacement backend glue,
+verifies the cutover, and then stays on as a CTO agent. Aiven challenge = agentic workflows on
+Aiven infra via the **Aiven MCP**.
+>>>>>>> 3130a80 (docs: define Aiven demo flow)
 
 ## Locked decisions
 
 - **Behavior migration, not just data migration.** The agent builds a *behavior graph* and
   classifies every Supabase feature: direct-migrate / rewrite / adapter / external / flag.
+<<<<<<< HEAD
 - **Delete Supabase by moving the data plane — not by hosting on Aiven.** ⚠️ UPDATED ~00:30:
   **Aiven Apps deploy is LA and our account isn't enabled** (verified live via MCP). So the rewired
   app runs against Aiven directly (Postgres + Kafka) and Supabase is still fully removed. Hosting the
   glue *on* Aiven Apps is the named next step — MCP path proven (`aiven_application_deploy`), just
   needs access. One-up line still holds: Aiven's own Lovable integration routes through a Supabase
   Edge Function; our migrated app doesn't touch Supabase at all.
+=======
+- **Shadow migration first, then full demo deletion.** The demo starts safely: create and validate
+  an Aiven Postgres + Kafka shadow data plane with receipts. After proof, the controlled demo path
+  cuts over so the app no longer depends on Supabase at runtime.
+- **Actually deploy if access works.** We deploy the rewritten glue as an **Aiven App** via MCP if
+  access is available. If access fails, the fallback is the same generated adapter path plus a
+  recorded deploy/proof package, but the demo still shows Supabase removed from the runtime path.
+>>>>>>> 3130a80 (docs: define Aiven demo flow)
 - **MCP is the control plane, not the bulk pipe.** Bulk copy uses `aiven-db-migrate` /
   `pg_dump`; MCP does provisioning, inspection, schema/metadata, Kafka topics+events,
   validation reads, and receipts.
-- **Demo app = "PulseWall"** (a live event reaction wall — see below).
+- **Demo app = "PulseWall"** (a live event reaction wall — see below). Full demo script:
+  [DEMO_FLOW.md](DEMO_FLOW.md).
 
 ## The demo app: PulseWall
 
@@ -47,6 +65,7 @@ migration lights up the full behavior graph:
 | Realtime wall + leaderboard | **rewrite → Aiven Kafka** | **hero beat:** channel → Kafka, live event hop |
 | Auth (magic link) | adapter required | honestly flagged |
 | Storage (post images) | externalize to object store | honestly flagged |
+<<<<<<< HEAD
 | Edge function (embeddings) | embeddings migrate to Aiven pgvector; glue → worker | flagged (Aiven Apps host = post-GA) |
 
 **Scope rule for the live demo:** build *all* features in Lovable (cheap there) + seed heavily;
@@ -65,6 +84,24 @@ classified + flagged instantly (no live surgery). Full range, no fragile over-re
 - **❌ Aiven Apps access — verified no-go (~00:30).** Account not LA-enabled, GitHub not connected.
   Pivoted: no live App deploy in the demo; the rewired app runs against Aiven directly. Still worth
   asking Daniil/Julie on site — if enabled before 18:00 we bolt the deploy on as a bonus beat.
+=======
+| Edge function (embeddings) | convert -> **Aiven App** if access works | the "delete Supabase" deploy beat |
+
+**Scope rule for the live demo:** build enough features in Lovable/Supabase to light up the
+behavior graph, then on stage **rewrite realtime -> Kafka**, **shadow pgvector/tables**, and
+perform a controlled demo cutover where the happy path runs without Supabase. Auth/storage get
+classified honestly as production blockers; the demo path uses a seeded/local user and external or
+static image URLs so full Supabase deletion is real for what the judge sees.
+
+## Open questions / blockers (help wanted)
+
+- **🚧 Lovable export surface (do this first).** What do we actually get from a Lovable
+  project — repo access, the Supabase project directly, or both? The whole migrator points at
+  this. Need to confirm before building.
+- **🚧 Aiven Apps access.** Ask Daniil / Julie on site. This is the cleanest way to make the
+  "Supabase is gone" beat feel real; keep the generated-adapter fallback ready if access slips.
+- **Seed plan.** ~5k posts + ~50k reactions via SQL so row counts + cost story are dramatic.
+>>>>>>> 3130a80 (docs: define Aiven demo flow)
 - **CTO agent scope.** For the hackathon, ship 1–2 real recommendations off live Aiven
   metrics — concrete, not a mockup.
 
