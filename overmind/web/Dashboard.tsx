@@ -13,6 +13,7 @@ import type {
   RunPhase,
 } from '../shared/types.ts'
 import { connectStream, startRun } from './api.ts'
+import { apiUrl } from './config.ts'
 
 import { SourceCard } from './components/SourceCard.tsx'
 import { SwarmGrid } from './components/SwarmGrid.tsx'
@@ -286,7 +287,15 @@ export default function Dashboard() {
 
   const onLaunch = async () => {
     setLaunching(true)
-    await startRun()
+    const { ok } = await startRun()
+    if (!ok) {
+      // Almost always: not signed in (POST /api/run is requireHumanOrAgent). Send them through
+      // login, same as Deploy's button, instead of silently doing nothing. (Same-origin only — on
+      // the cross-origin Pages+tunnel demo the run is triggered locally or via the agent path.)
+      setLaunching(false)
+      window.location.href = apiUrl('/api/auth/login')
+      return
+    }
     // leave the spinner state to the phase stream; clear local flag shortly
     setTimeout(() => setLaunching(false), 1200)
   }
