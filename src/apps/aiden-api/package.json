@@ -1,0 +1,24 @@
+{
+  "name": "@aiden/aiden-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aiden/aiven-ops": "0.1.0",
+    "@aiden/contracts": "0.1.0",
+    "@aiden/fixtures": "0.1.0",
+    "@aiden/migration-core": "0.1.0",
+    "@aiden/pulsewall-adapter": "0.1.0",
+    "@fastify/cors": "^11.1.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.6.2",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
