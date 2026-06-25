@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { streamSSE } from 'hono/streaming'
 import type { SwarmEvent } from '../shared/types.ts'
 import { runMigration } from './orchestrator.ts'
+import { startMonitor, stopMonitor, getCtoState } from './monitor.ts'
+import { closeAll } from '../aiven/pg.ts'
 import { PORT, SOURCE_REPO_DIR } from './env.ts'
 import {
   authBanner,
@@ -38,6 +41,19 @@ function broadcast(e: SwarmEvent): void {
 
 // `c.get('actor')` is typed for the protected /api/run handler.
 const app = new Hono<{ Variables: { actor: Actor } }>()
+
+// ── CORS ─────────────────────────────────────────────────────────────────────────────
+// Let the GitHub Pages site + a cloudflared tunnel call this API from another origin. We reflect
+// the request origin (not '*') because credentials:true forbids the wildcard. Must precede routes.
+app.use(
+  '/api/*',
+  cors({
+    origin: (o) => o ?? '*',
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+  }),
+)
 
 // ── Auth: humans (WorkOS AuthKit) + agents (M2M self-registration) ───────────────────
 // Open by design: login/callback/me/logout + the agentic self-registration endpoint. With no
@@ -138,6 +154,10 @@ app.get('/api/tenant/:id', async (c) => {
   return c.json({ tenant, pg })
 })
 
+// ── Always-on CTO monitor snapshot (latest in-memory state + rolling alert feed) ─────
+// Always 200 with a valid (possibly degraded) CtoState — getCtoState never throws.
+app.get('/api/cto/state', async (c) => c.json(await getCtoState(c.req.query('tenant') ?? 'demo')))
+
 // ── Talk to your Aiven CTO — a real agent reply, streamed over SSE ───────────────────
 // The founder never opens the Aiven dashboard; they ask their CTO agent, which reads their
 // live infra (overmind-pg / metrics) and answers. Advisory-first (proposes; never mutates).
@@ -178,10 +198,22 @@ if (process.env.NODE_ENV === 'production') {
 // Ensure the demo tenant exists (maps to the live overmind-pg / overmind-kafka).
 ensureDemoTenant().catch((e) => console.warn('[tenant] ensureDemoTenant skipped:', (e as Error)?.message ?? e))
 
+// Start the always-on CTO monitor. Idempotent; ticks immediately then on the interval. New alerts
+// flow over /api/stream via broadcast. Read-only / advisory — it never mutates infra.
+startMonitor(broadcast)
+
 authBanner()
 serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`⚡ Aiven Overmind — control plane on http://0.0.0.0:${info.port}`)
   console.log(`   GET  /api/health   GET /api/stream (SSE)   POST /api/run {source?}`)
   console.log(`   auth: GET /api/auth/login|callback|me|logout   POST /api/agents/register`)
-  console.log(`   cto:  GET /api/tenant/:id   POST /api/cto/chat (SSE)`)
+  console.log(`   cto:  GET /api/tenant/:id   GET /api/cto/state   POST /api/cto/chat (SSE)`)
 })
+
+// Graceful shutdown: stop the monitor tick and drain the pg pools so restarts don't drop sockets.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(sig, () => {
+    stopMonitor()
+    closeAll().finally(() => process.exit(0))
+  })
+}

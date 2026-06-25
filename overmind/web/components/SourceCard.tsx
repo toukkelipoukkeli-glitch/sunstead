@@ -24,7 +24,7 @@ export function SourceCard({
   const tables = src?.tables ?? []
   const rows = src?.rowCounts ?? {}
   const totalRows = Object.values(rows).reduce((a, b) => a + b, 0)
-  const name = run?.source || 'live-hype-wall'
+  const name = run?.source || 'your Lovable app'
 
   const caps: { label: string; on: boolean }[] = [
     { label: 'Auth', on: !!src?.hasAuth },

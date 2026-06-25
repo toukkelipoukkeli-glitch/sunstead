@@ -4,11 +4,13 @@
 // if those 404 in dev they degrade to the console (handled in authHref()).
 
 import { Logo, ArrowRight } from '../../icons.tsx'
+import { apiUrl } from '../../config.ts'
 
 function authHref(path: string): string {
   // In dev the WorkOS routes may not exist yet → fall back to the console.
-  // We optimistically link to the real route; onError below swaps to the console.
-  return path
+  // We optimistically link to the real route (resolved against the configured API base so it
+  // works behind the tunnel from a static Pages deploy); onError below swaps to the console.
+  return apiUrl(path)
 }
 
 export function Nav() {
@@ -59,11 +61,12 @@ export function Nav() {
 // We do this lazily on click so we never block render. Real route wins when it exists.
 async function degradeToConsole(e: React.MouseEvent<HTMLAnchorElement>, path: string) {
   e.preventDefault()
+  const url = apiUrl(path)
   try {
-    const res = await fetch(path, { method: 'GET', redirect: 'manual' })
+    const res = await fetch(url, { method: 'GET', redirect: 'manual', credentials: 'include' })
     // 0 (opaqueredirect) or 2xx/3xx → the auth route exists; follow it.
     if (res.type === 'opaqueredirect' || res.status === 0 || (res.status >= 200 && res.status < 400)) {
-      window.location.href = path
+      window.location.href = url
       return
     }
   } catch {

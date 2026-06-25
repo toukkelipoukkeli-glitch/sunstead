@@ -74,12 +74,12 @@ const PIPELINE: { phase: Exclude<RunPhase, 'done' | 'error'>; title: string; bod
   {
     phase: 'cutover',
     title: 'Cutover',
-    body: 'Traffic moves to Aiven. Supabase is switched off — nothing left running behind it.',
+    body: 'Reads and writes cut over to Aiven Postgres, realtime to Kafka — zero downtime. Your Lovable app keeps serving; only the data layer moved.',
   },
   {
     phase: 'operate',
     title: 'Operate',
-    body: 'A persistent CTO agent reads live Aiven metrics forever — scaling, indexes, cost, carbon.',
+    body: 'A persistent CTO agent reads live Aiven metrics forever — scaling, indexes, cost and risks.',
   },
 ]
 
@@ -93,7 +93,7 @@ export function HowItWorks() {
         <h2 className="lp-h2">One swarm. Ten phases. Fully autonomous.</h2>
         <p className="lp-lede">
           Overmind isn&apos;t a wizard you babysit. It&apos;s a bounded agent swarm — typed tools, a
-          receipt ledger — that runs the whole migration end to end while you watch it in Mission
+          receipt ledger — that runs the migration end to end while you watch it in Mission
           Control.
         </p>
       </div>

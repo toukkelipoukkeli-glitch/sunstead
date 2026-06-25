@@ -264,6 +264,67 @@ export async function metrics(project: string, name: string): Promise<any> {
   }
 }
 
+export interface ResourceMetrics {
+  cpuPct: number | null
+  memPct: number | null
+  diskPct: number | null
+}
+
+/**
+ * Tolerantly extract the latest CPU / memory / disk percentage from the Grafana-style payload
+ * `metrics()` returns. Aiven shapes each metric as
+ *   { <metric_name>: { data: { cols: [...], rows: [[header],[Date(...), value], ...] } } }
+ * where the last data row's last numeric column is the most recent reading. All three are already
+ * percentages on Aiven PG. This searches defensively across known key aliases and returns null for
+ * anything it can't pin to a finite number — never throws.
+ */
+export function parseResourceMetrics(payload: any): ResourceMetrics {
+  return {
+    cpuPct: latestMetricValue(payload, ['cpu_usage', 'cpu', 'cpuUsage']),
+    memPct: latestMetricValue(payload, ['mem_usage', 'memory_usage', 'mem', 'memory']),
+    diskPct: latestMetricValue(payload, ['disk_usage', 'diskspace_used_percent', 'disk']),
+  }
+}
+
+/** Pull the most recent finite number for one metric (trying several key aliases). */
+function latestMetricValue(payload: any, keys: string[]): number | null {
+  if (!payload || typeof payload !== 'object') return null
+  for (const key of keys) {
+    const block = payload[key]
+    if (!block) continue
+    // Standard shape: block.data.rows = [[header], [tsString, value], ...].
+    const rows: any[] | undefined = block?.data?.rows ?? block?.rows
+    if (Array.isArray(rows)) {
+      // Walk backwards: the freshest data row is last; skip header rows (cells are label objects).
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const row = rows[i]
+        if (!Array.isArray(row)) continue
+        // A header row's cells are { label, type } objects; a data row has a Date string + numbers.
+        const n = lastFiniteNumber(row)
+        if (n != null) return n
+      }
+    }
+    // Fallback: a bare numeric/stringy value directly on the block.
+    const direct = toFiniteNumber(block)
+    if (direct != null) return direct
+  }
+  return null
+}
+
+function lastFiniteNumber(row: any[]): number | null {
+  for (let j = row.length - 1; j >= 0; j--) {
+    const n = toFiniteNumber(row[j])
+    if (n != null) return n
+  }
+  return null
+}
+
+function toFiniteNumber(v: any): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v)
+  return null
+}
+
 /**
  * Pricing for a (serviceType, plan, cloud). Aiven exposes plans under the service type list;
  * we resolve the matching plan in the given cloud and normalize to per-hour / per-month USD.

@@ -1,4 +1,5 @@
 import type { SwarmEvent } from '../shared/types.ts'
+import { apiUrl, apiFetch } from './config.ts'
 
 /**
  * Connect to the orchestrator's SSE stream. The server emits `event: pulse`
@@ -11,7 +12,7 @@ export function connectStream(onEvent: (e: SwarmEvent) => void): () => void {
 
   const open = () => {
     if (closed) return
-    es = new EventSource('/api/stream')
+    es = new EventSource(apiUrl('/api/stream'), { withCredentials: true })
 
     es.addEventListener('pulse', (ev) => {
       try {
@@ -51,7 +52,7 @@ export function connectStream(onEvent: (e: SwarmEvent) => void): () => void {
 /** Kick off a migration run. POST /api/run. Degrades silently if the API is down. */
 export async function startRun(source?: string): Promise<{ ok: boolean }> {
   try {
-    const res = await fetch('/api/run', {
+    const res = await apiFetch('/api/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(source ? { source } : {}),

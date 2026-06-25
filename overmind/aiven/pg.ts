@@ -81,6 +81,39 @@ export async function q1<T = any>(
 }
 
 /**
+ * Run ONE read-only query inside an enforced READ ONLY transaction with a statement timeout, on a
+ * dedicated client. Postgres itself rejects any write — belt-and-suspenders behind the caller's
+ * regex guard — and statement_timeout caps runaway/blocking queries (e.g. `select pg_sleep(30)`),
+ * so a single call can't mutate data or tie up a pool connection. Used by the CTO chat's query_pg
+ * tool, which runs model-shaped SQL against a superuser (avnadmin) connection.
+ */
+export async function qReadOnly<T = any>(
+  connStr: string,
+  text: string,
+  timeoutMs = 5000
+): Promise<T[]> {
+  const ms = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : 5000
+  const client = await pool(connStr).connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('SET TRANSACTION READ ONLY')
+    await client.query(`SET LOCAL statement_timeout = ${ms}`)
+    const res = await client.query(text)
+    await client.query('COMMIT')
+    return res.rows as T[]
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      /* ignore rollback failure */
+    }
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+/**
  * Apply a SQL schema/migration string. Runs the whole script in one round-trip inside a
  * transaction so partial failures roll back. CREATE FUNCTION / triggers / DO blocks are fine here
  * (this is a direct pg connection, not the MCP write path which blocks them).

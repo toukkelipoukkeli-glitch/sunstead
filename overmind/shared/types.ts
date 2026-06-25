@@ -118,6 +118,35 @@ export interface CtoRecommendation {
   ts: string
 }
 
+// ───────────────────────── CTO monitor (always-on) ─────────────────────────
+// The latest snapshot the always-on monitor holds in memory. Every field degrades to null
+// independently — one failing signal must never blank the rest. The /api/cto/state endpoint
+// returns this (always 200), and the CTO chat agent reads it via the get_state tool.
+export interface CtoState {
+  ts: string // ISO of this snapshot
+  tenant: string
+  pg: {
+    status: 'running' | 'unknown'
+    plan: string
+    rows: number | null
+    connections: number | null
+    maxConnections: number | null
+    cacheHitRatioPct: number | null
+    dbSizePretty: string | null
+    cpuPct: number | null
+    memPct: number | null
+    diskPct: number | null
+    hasVectorIndex: boolean | null
+  }
+  kafka: { status: 'running' | 'unknown'; plan: string; topics: number | null }
+  cost: { pgUsd: number | null; kafkaUsd: number | null; totalUsd: number | null; supabaseUsd: number }
+  // null = pg_stat_statements unavailable (extension not enabled); [] = enabled but no rows yet.
+  slowQueries: { query: string; calls: number; meanMs: number; totalMs: number }[] | null
+  watching: string[] // human labels of what the monitor checks each tick
+  alerts: CtoRecommendation[]
+  lastCheckedAgoMs: number
+}
+
 // ───────────────────────── SSE protocol (api → control-room) ─────────────────────────
 // Every server-sent event is one of these. The control-room is a pure function of this stream.
 export type SwarmEvent =

@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   root: 'web',
+  // For GitHub Pages project sites the app is served under /<repo>/, so assets must be
+  // prefixed with that path. The deploy script sets PAGES_BASE=/overmind-live/; local dev
+  // (vite / vite preview) leaves it unset → base '/' so nothing changes day-to-day.
+  base: process.env.PAGES_BASE ?? '/',
   plugins: [react()],
   resolve: { alias: { '@shared': new URL('./shared', import.meta.url).pathname } },
   // Proxy real API paths (/api/run, /api/stream, /api/auth/...) to the Hono server,

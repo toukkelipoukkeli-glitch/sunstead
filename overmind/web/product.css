@@ -399,32 +399,47 @@
   .pp-cto-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
 }
 
-/* left: live infra at a glance */
+/* left: the always-on live monitor */
 .pp-cto-rail {
   border-right: 1px solid var(--pp-line);
   background: var(--pp-cream);
-  padding: 24px 22px;
+  padding: 22px 20px 26px;
   overflow-y: auto;
 }
-.pp-rail-head { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; }
+.pp-rail-head { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; }
 .pp-avatar {
   width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
   background: var(--pp-ink); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .pp-rail-head .pp-who-name { font-weight: 700; font-size: 15px; }
-.pp-rail-head .pp-who-role { font-size: 12.5px; color: var(--pp-dim); }
+.pp-rail-head .pp-who-role {
+  font-size: 12px; color: var(--pp-dim);
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 1px;
+}
+
+/* the steady "we're live" pulse, reused in the head + monitoring beat */
+.pp-live-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--pp-ok); box-shadow: 0 0 0 0 rgba(8, 130, 71, 0.5);
+  animation: pp-live 2s ease-out infinite;
+}
+@keyframes pp-live {
+  0% { box-shadow: 0 0 0 0 rgba(8, 130, 71, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(8, 130, 71, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(8, 130, 71, 0); }
+}
 
 .pp-rail-section-title {
   font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--pp-dim2); margin: 22px 0 12px;
+  color: var(--pp-dim2); margin: 20px 0 10px;
 }
 .pp-svc {
   background: #fff; border: 1px solid var(--pp-line);
-  border-radius: 12px; padding: 14px; margin-bottom: 11px;
+  border-radius: 12px; padding: 13px 14px; margin-bottom: 10px;
 }
-.pp-svc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.pp-svc-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+.pp-svc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.pp-svc-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
 .pp-svc-name .pp-leaf { color: var(--pp-red); display: inline-flex; }
 .pp-status {
   display: inline-flex; align-items: center; gap: 6px;
@@ -432,8 +447,30 @@
 }
 .pp-status .pp-led { width: 7px; height: 7px; border-radius: 50%; background: var(--pp-ok); box-shadow: 0 0 7px var(--pp-ok); }
 .pp-status.warn { color: var(--pp-warn); } .pp-status.warn .pp-led { background: var(--pp-warn); box-shadow: 0 0 7px var(--pp-warn); }
-.pp-svc-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--pp-dim); }
+.pp-svc-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; font-size: 12px; color: var(--pp-dim); }
 .pp-svc-meta b { color: var(--pp-txt); font-weight: 600; }
+
+/* resource gauges (cpu / mem / disk) — subtle bars in the existing green→amber→red tokens */
+.pp-gauges { display: flex; gap: 10px; margin-top: 11px; }
+.pp-gauge { flex: 1; min-width: 0; }
+.pp-gauge-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+.pp-gauge-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pp-dim2); }
+.pp-gauge-val { font-size: 11.5px; font-weight: 600; color: var(--pp-txt); font-family: "Geist Mono", monospace; }
+.pp-gauge-track { height: 5px; border-radius: 999px; background: var(--pp-line); overflow: hidden; }
+.pp-gauge-fill {
+  height: 100%; border-radius: 999px; background: var(--pp-ok);
+  transition: width 0.5s ease, background 0.3s ease;
+}
+.pp-gauge-fill.warn { background: var(--pp-warn); }
+.pp-gauge-fill.crit { background: var(--pp-crit); }
+
+.pp-svc-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+.pp-tag {
+  font-size: 11px; font-weight: 600; color: var(--pp-dim);
+  background: var(--pp-cream); border: 1px solid var(--pp-line2);
+  border-radius: 6px; padding: 2px 8px;
+  font-family: "Geist Mono", monospace; letter-spacing: -0.01em;
+}
 
 .pp-cost-card {
   background: var(--pp-ink); color: #fff; border-radius: 12px; padding: 16px; margin-top: 4px;
@@ -442,6 +479,57 @@
 .pp-cost-card .pp-cost-v { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; margin-top: 2px; }
 .pp-cost-card .pp-cost-v small { font-size: 14px; color: #b7b7c2; font-weight: 600; }
 .pp-cost-card .pp-cost-note { font-size: 12px; color: #8fd6a0; margin-top: 7px; }
+
+/* ── the monitoring feed — proof the CTO is always on ── */
+.pp-mon-title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.pp-mon-beat {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  color: var(--pp-ok);
+  font-family: "Geist Mono", monospace;
+}
+.pp-mon-feed {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 280px; overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* calm "all healthy" state */
+.pp-mon-calm {
+  display: flex; align-items: center; gap: 11px;
+  background: #fff; border: 1px solid var(--pp-line);
+  border-radius: 12px; padding: 14px;
+}
+.pp-mon-calm-led {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background: var(--pp-ok); box-shadow: 0 0 8px var(--pp-ok);
+}
+.pp-mon-calm-title { font-size: 13px; font-weight: 600; color: var(--pp-txt); }
+.pp-mon-calm-sub { font-size: 12px; color: var(--pp-dim); margin-top: 1px; }
+
+/* a single alert row */
+.pp-alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: #fff; border: 1px solid var(--pp-line);
+  border-radius: 12px; padding: 11px 13px;
+}
+.pp-alert-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}
+.pp-alert-dot.info { background: var(--pp-ok); box-shadow: 0 0 6px rgba(8, 130, 71, 0.5); }
+.pp-alert-dot.warn { background: var(--pp-warn); box-shadow: 0 0 6px rgba(185, 118, 15, 0.5); }
+.pp-alert-dot.critical { background: var(--pp-crit); box-shadow: 0 0 6px rgba(218, 54, 51, 0.5); }
+.pp-alert-body { flex: 1; min-width: 0; }
+.pp-alert-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pp-alert-title { font-size: 13px; font-weight: 600; color: var(--pp-txt); line-height: 1.35; }
+.pp-alert-ts { font-size: 10.5px; color: var(--pp-dim2); flex-shrink: 0; font-family: "Geist Mono", monospace; }
+.pp-alert-detail { font-size: 12px; color: var(--pp-dim); line-height: 1.45; margin-top: 2px; }
+.pp-alert-action {
+  font-size: 11.5px; color: var(--pp-dim2); line-height: 1.4; margin-top: 5px;
+  padding-left: 9px; border-left: 2px solid var(--pp-line2);
+}
 
 /* right: the chat */
 .pp-chat { display: flex; flex-direction: column; min-height: 0; }

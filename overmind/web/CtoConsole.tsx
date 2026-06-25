@@ -1,30 +1,73 @@
 // web/CtoConsole.tsx — "Your Aiven CTO". The centerpiece of the operate phase.
 //
-// The founder NEVER opens the Aiven dashboard again. They open this. Left: their live infra at a
-// glance (PG/Kafka status, rows, cost). Right: a polished chat with a senior-engineer agent that
-// streams its replies from POST /api/cto/chat.
+// The founder NEVER opens the Aiven dashboard again. They open this. Left: an ALWAYS-ON live
+// monitor — PG/Kafka health, real resource usage, cost, and a rolling alert feed that proves the
+// CTO is watching every few seconds, not just answering when asked. Right: a polished chat with a
+// senior-engineer agent that streams its replies from POST /api/cto/chat.
 //
-// Stream handling: we read the response BODY as a stream and append text as it arrives. The server
-// may send either raw text chunks OR SSE (`data: {json}\n\n`); we handle both. If /api/cto/chat
-// isn't wired yet (404/empty), we degrade to a canned senior-engineer reply so the surface always
-// demos — never a blank screen.
+// Live state: we poll GET /api/cto/state?tenant=demo every 8s (and once on mount). Every field is
+// optional / nullable — if the backend is down or a field is missing we degrade to calm, sensible
+// placeholders so the static Pages deploy still looks complete. The monitor never shows a blank.
+//
+// Stream handling: we read the chat response BODY as a stream and append text as it arrives. The
+// server may send either raw text chunks OR SSE (`data: {json}\n\n`); we handle both. If
+// /api/cto/chat isn't wired (404/empty), we degrade to a canned senior-engineer reply.
 //
 // Owns: this file + web/product.css. Default export. Never edits App.tsx.
 
 import { useEffect, useRef, useState } from 'react'
 import './product.css'
+import { apiFetch } from './config.ts'
 
 interface Msg {
   role: 'cto' | 'me'
   text: string
 }
 
-// Live infra snapshot shape we try to read from /api/tenant/demo. All optional — placeholders fill in.
-interface Tenant {
-  pg?: { status?: string; rows?: number; cpu?: number; storageGb?: number; plan?: string }
-  kafka?: { status?: string; topics?: number; plan?: string }
-  cost?: { aivenUsd?: number; supabaseUsd?: number }
+// ── The live-state contract from GET /api/cto/state?tenant=demo ──
+// Built by a teammate in parallel; we code against this shape and degrade on any null/missing field.
+type Severity = 'info' | 'warn' | 'critical'
+
+interface CtoAlert {
+  id: string
+  severity: Severity
+  title: string
+  detail: string
+  action: string
+  metric?: string
+  ts: string
 }
+
+interface CtoState {
+  ts: string
+  tenant: string
+  pg: {
+    status: 'running' | 'unknown'
+    plan: string
+    rows: number | null
+    connections: number | null
+    maxConnections: number | null
+    cacheHitRatioPct: number | null
+    dbSizePretty: string | null
+    cpuPct: number | null
+    memPct: number | null
+    diskPct: number | null
+    hasVectorIndex: boolean | null
+  }
+  kafka: { status: 'running' | 'unknown'; plan: string; topics: number | null }
+  cost: {
+    pgUsd: number | null
+    kafkaUsd: number | null
+    totalUsd: number | null
+    supabaseUsd: number
+  }
+  slowQueries: { query: string; calls: number; meanMs: number; totalMs: number }[] | null
+  watching: string[]
+  alerts: CtoAlert[]
+  lastCheckedAgoMs: number
+}
+
+const POLL_MS = 8000
 
 const SUGGESTED = [
   "How's my database?",
@@ -33,30 +76,51 @@ const SUGGESTED = [
   'Any risks I should know about?',
 ]
 
+// Copy that stays true regardless of live values — no hardcoded row counts.
 const GREETING =
-  "Hi — I'm your Aiven CTO. I watch your Postgres and Kafka around the clock so you don't have to. " +
-  "Everything's green right now: 172 rows across users, posts and reactions, pgvector search live, " +
-  'and you’re well under your plan limits. Ask me anything about your infra — scaling, cost, ' +
-  'risks. I’ll give it to you straight.'
+  "Hi — I'm your Aiven CTO. I watch your Postgres and Kafka every few seconds, so you don't have " +
+  "to. The live monitor on the left is always on: status, load, cost and anything that needs a " +
+  "decision shows up there in real time. Ask me anything about your infra — scaling, cost, risks. " +
+  "I'll give it to you straight."
 
 export default function CtoConsole() {
-  const [tenant, setTenant] = useState<Tenant | null>(null)
+  const [state, setState] = useState<CtoState | null>(null)
   const [messages, setMessages] = useState<Msg[]>([{ role: 'cto', text: GREETING }])
   const [streaming, setStreaming] = useState(false)
   const [draft, setDraft] = useState('')
+  // Local clock that re-renders the heartbeat ("checked Ns ago") between polls.
+  const [now, setNow] = useState(() => Date.now())
+  const lastFetchAt = useRef<number>(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  // pull the live infra snapshot (best-effort; placeholders if the endpoint isn't up yet)
+  // Poll the live monitoring snapshot every 8s (and once on mount). Best-effort — placeholders fill
+  // in when the endpoint is down so the surface always looks complete.
   useEffect(() => {
     let alive = true
-    fetch('/api/tenant/demo', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((t) => alive && t && setTenant(t))
-      .catch(() => {})
+    const pull = () => {
+      apiFetch('/api/cto/state?tenant=demo')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((s: CtoState | null) => {
+          if (alive && s) {
+            setState(s)
+            lastFetchAt.current = Date.now()
+          }
+        })
+        .catch(() => {})
+    }
+    pull()
+    const id = setInterval(pull, POLL_MS)
     return () => {
       alive = false
+      clearInterval(id)
     }
+  }, [])
+
+  // 1s clock so the heartbeat ("watching live · checked Ns ago") and relative timestamps tick.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
   }, [])
 
   // keep the transcript pinned to the latest token
@@ -81,10 +145,9 @@ export default function CtoConsole() {
     setStreaming(true)
 
     try {
-      const res = await fetch('/api/cto/chat', {
+      const res = await apiFetch('/api/cto/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           message: text,
           history: history.map((m) => ({ role: m.role === 'me' ? 'user' : 'assistant', content: m.text })),
@@ -115,8 +178,11 @@ export default function CtoConsole() {
               if (!line.startsWith('data:')) continue
               const data = line.slice(5).trim()
               if (!data || data === '[DONE]') continue
-              got = true
-              appendToLast(extractText(data))
+              const piece = extractText(data)
+              if (piece) {
+                got = true
+                appendToLast(piece)
+              }
             }
           }
         } else {
@@ -142,11 +208,28 @@ export default function CtoConsole() {
     })
   }
 
-  const t = tenant ?? {}
-  const pg = t.pg ?? { status: 'running', rows: 172, cpu: 8, storageGb: 1.2, plan: 'startup-4' }
-  const kafka = t.kafka ?? { status: 'running', topics: 1, plan: 'business-4' }
-  const cost = t.cost ?? { aivenUsd: 0, supabaseUsd: 0 }
-  const aivenUsd = cost.aivenUsd ?? 0
+  // ── derive the rail's display values, with calm placeholders when the backend is down ──
+  const live = !!state
+  const pg = state?.pg
+  const kafka = state?.kafka
+  const cost = state?.cost
+  const alerts = state?.alerts ?? []
+  const watching = (state?.watching && state.watching.length ? state.watching : ['Postgres', 'Kafka'])
+
+  const pgStatus = pg?.status ?? 'running'
+  const pgPlan = pg?.plan ?? 'startup-4'
+  const kafkaStatus = kafka?.status ?? 'running'
+  const kafkaPlan = kafka?.plan ?? 'business-4'
+  const kafkaTopics = kafka?.topics ?? 1
+
+  // Cost: prefer real totals; keep the bridge "$0 · shared account" note when that's the case.
+  const totalUsd = cost?.totalUsd ?? 0
+  const supabaseUsd = cost?.supabaseUsd ?? 0
+
+  // Heartbeat: prefer the server's own age, then advance it by our local clock between polls.
+  const baseAgoMs = state?.lastCheckedAgoMs ?? 0
+  const driftMs = lastFetchAt.current ? now - lastFetchAt.current : 0
+  const checkedAgoS = live ? Math.max(0, Math.round((baseAgoMs + driftMs) / 1000)) : null
 
   return (
     <div className="pp">
@@ -166,7 +249,7 @@ export default function CtoConsole() {
         </header>
 
         <div className="pp-cto-body">
-          {/* ── LEFT: live infra at a glance ── */}
+          {/* ── LEFT: the always-on live monitor ── */}
           <aside className="pp-cto-rail">
             <div className="pp-rail-head">
               <span className="pp-avatar">
@@ -174,12 +257,15 @@ export default function CtoConsole() {
               </span>
               <div>
                 <div className="pp-who-name">Your Aiven CTO</div>
-                <div className="pp-who-role">watching your infra · live</div>
+                <div className="pp-who-role">
+                  <span className="pp-live-dot" /> watching {watching.join(' · ')} · live
+                </div>
               </div>
             </div>
 
             <div className="pp-rail-section-title">Infrastructure</div>
 
+            {/* PG card — real load with subtle bars */}
             <div className="pp-svc">
               <div className="pp-svc-top">
                 <span className="pp-svc-name">
@@ -188,25 +274,41 @@ export default function CtoConsole() {
                   </span>
                   Aiven for PostgreSQL®
                 </span>
-                <span className={`pp-status${statusClass(pg.status)}`}>
+                <span className={`pp-status${statusClass(pgStatus)}`}>
                   <span className="pp-led" />
-                  {pg.status ?? 'running'}
+                  {pgStatus}
                 </span>
               </div>
               <div className="pp-svc-meta">
                 <span>
-                  <b>{(pg.rows ?? 0).toLocaleString()}</b> rows
+                  <b>{pg?.rows != null ? pg.rows.toLocaleString() : '—'}</b> rows
                 </span>
                 <span>
-                  <b>{pg.cpu ?? '—'}%</b> cpu
+                  <b>
+                    {pg?.connections != null ? pg.connections : '—'}
+                    {pg?.maxConnections != null ? ` / ${pg.maxConnections}` : ''}
+                  </b>{' '}
+                  conn
                 </span>
                 <span>
-                  <b>{pg.storageGb ?? '—'}</b> GB
+                  <b>{pg?.cacheHitRatioPct != null ? `${Math.round(pg.cacheHitRatioPct)}%` : '—'}</b> cache
                 </span>
-                <span>{pg.plan ?? 'startup-4'}</span>
+                <span>
+                  <b>{pg?.dbSizePretty ?? '—'}</b> size
+                </span>
+              </div>
+              <div className="pp-gauges">
+                <Gauge label="cpu" pct={pg?.cpuPct ?? null} />
+                <Gauge label="mem" pct={pg?.memPct ?? null} />
+                <Gauge label="disk" pct={pg?.diskPct ?? null} />
+              </div>
+              <div className="pp-svc-foot">
+                <span className="pp-tag">{pgPlan}</span>
+                {pg?.hasVectorIndex ? <span className="pp-tag">pgvector</span> : null}
               </div>
             </div>
 
+            {/* Kafka card */}
             <div className="pp-svc">
               <div className="pp-svc-top">
                 <span className="pp-svc-name">
@@ -215,17 +317,19 @@ export default function CtoConsole() {
                   </span>
                   Apache Kafka®
                 </span>
-                <span className={`pp-status${statusClass(kafka.status)}`}>
+                <span className={`pp-status${statusClass(kafkaStatus)}`}>
                   <span className="pp-led" />
-                  {kafka.status ?? 'running'}
+                  {kafkaStatus}
                 </span>
               </div>
               <div className="pp-svc-meta">
                 <span>
-                  <b>{kafka.topics ?? 1}</b> topic{(kafka.topics ?? 1) === 1 ? '' : 's'}
+                  <b>{kafkaTopics}</b> topic{kafkaTopics === 1 ? '' : 's'}
                 </span>
                 <span>realtime bridge</span>
-                <span>{kafka.plan ?? 'business-4'}</span>
+              </div>
+              <div className="pp-svc-foot">
+                <span className="pp-tag">{kafkaPlan}</span>
               </div>
             </div>
 
@@ -233,13 +337,54 @@ export default function CtoConsole() {
             <div className="pp-cost-card">
               <div className="pp-cost-k">Aiven · this month</div>
               <div className="pp-cost-v">
-                ${aivenUsd.toFixed(2)} <small>/ mo</small>
+                ${totalUsd.toFixed(2)} <small>/ mo</small>
               </div>
               <div className="pp-cost-note">
-                {cost.supabaseUsd
-                  ? `vs $${cost.supabaseUsd.toFixed(2)} on Supabase`
-                  : 'demo project · shared Aiven account'}
+                {totalUsd > 0
+                  ? supabaseUsd > 0
+                    ? `vs $${supabaseUsd.toFixed(2)} on Supabase`
+                    : 'real Aiven pricing'
+                  : 'demo · shared account = $0'}
               </div>
+            </div>
+
+            {/* ── NEW: the monitoring feed — proof the CTO is always on ── */}
+            <div className="pp-rail-section-title pp-mon-title">
+              Monitoring
+              <span className="pp-mon-beat">
+                <span className="pp-live-dot" />
+                {checkedAgoS == null
+                  ? 'connecting…'
+                  : checkedAgoS < 2
+                    ? 'checked just now'
+                    : `checked ${checkedAgoS}s ago`}
+              </span>
+            </div>
+
+            <div className="pp-mon-feed">
+              {alerts.length === 0 ? (
+                <div className="pp-mon-calm">
+                  <span className="pp-mon-calm-led" />
+                  <div>
+                    <div className="pp-mon-calm-title">All healthy</div>
+                    <div className="pp-mon-calm-sub">Nothing needs your attention.</div>
+                  </div>
+                </div>
+              ) : (
+                alerts.map((a) => (
+                  <div className="pp-alert" key={a.id}>
+                    <span className={`pp-alert-dot ${a.severity}`} />
+                    <div className="pp-alert-body">
+                      <div className="pp-alert-top">
+                        <span className="pp-alert-title">{a.title}</span>
+                        <span className="pp-alert-ts">{relTime(a.ts, now)}</span>
+                      </div>
+                      <div className="pp-alert-detail">{a.detail}</div>
+                      {a.action && <div className="pp-alert-action">{a.action}</div>}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </aside>
 
@@ -323,11 +468,48 @@ function statusClass(s?: string): string {
   return /run|ok|green|healthy/i.test(s) ? '' : ' warn'
 }
 
-// SSE `data:` payloads may be raw text or JSON ({delta}/{text}/{content}). Pull out the text.
+// A subtle resource bar. Greens by default; escalates to amber/crit at high utilisation using the
+// existing severity tokens — no new color scale.
+function Gauge({ label, pct }: { label: string; pct: number | null }) {
+  const v = pct == null ? null : Math.max(0, Math.min(100, pct))
+  const tone = v == null ? '' : v >= 85 ? ' crit' : v >= 70 ? ' warn' : ''
+  return (
+    <div className="pp-gauge">
+      <div className="pp-gauge-head">
+        <span className="pp-gauge-label">{label}</span>
+        <span className="pp-gauge-val">{v == null ? '—' : `${Math.round(v)}%`}</span>
+      </div>
+      <div className="pp-gauge-track">
+        <div className={`pp-gauge-fill${tone}`} style={{ width: `${v ?? 0}%` }} />
+      </div>
+    </div>
+  )
+}
+
+// Relative timestamp for the alert feed ("just now", "3m ago", "2h ago").
+function relTime(iso: string, now: number): string {
+  const t = new Date(iso).getTime()
+  if (isNaN(t)) return ''
+  const s = Math.max(0, Math.round((now - t) / 1000))
+  if (s < 5) return 'just now'
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+// SSE `data:` payloads are CtoChunk objects { type, value }. Only 'text' (and 'error') carry
+// answer content; 'tool'/'done' are status frames we skip. Tolerate raw text + legacy {delta/text}.
 function extractText(data: string): string {
   try {
     const o = JSON.parse(data)
-    return o.delta ?? o.text ?? o.content ?? o.token ?? (typeof o === 'string' ? o : '')
+    if (o && typeof o === 'object') {
+      if (o.type === 'tool' || o.type === 'done') return ''
+      return o.value ?? o.delta ?? o.text ?? o.content ?? o.token ?? ''
+    }
+    return typeof o === 'string' ? o : ''
   } catch {
     return data
   }
@@ -350,32 +532,33 @@ function fallbackReply(q: string): string {
   const s = q.toLowerCase()
   if (/(scale|grow|bigger|traffic|load)/.test(s))
     return (
-      "Not yet — and that's the right answer. Your Postgres is sitting around 8% CPU with plenty " +
-      'of headroom on the `startup-4` plan, and Kafka is barely warm. Scaling now would just burn ' +
-      "money. I'll watch CPU, connections and storage, and the moment you sustain ~70% I'll ping " +
-      'you with a one-click bump to the next plan — no downtime, Aiven handles the failover.'
+      "Not yet — and that's the right answer. Your Postgres is sitting at low CPU with plenty " +
+      'of headroom on its current plan, and Kafka is barely warm. Scaling now would just burn ' +
+      "money. I watch CPU, connections and storage every few seconds, and the moment you sustain " +
+      "~70% I'll ping you with a one-click bump to the next plan — no downtime, Aiven handles the " +
+      'failover.'
     )
   if (/(cost|price|cheap|expensive|spend|bill|\$)/.test(s))
     return (
       'Cheaper than you think. This demo runs on a shared Aiven account, so your slice is effectively ' +
-      '$0 right now. At real production size the equivalent of your Supabase setup lands around ' +
-      "**$80–120/mo** on Aiven — but you get a 99.99% SLA, no usage-based surprises, and I keep you " +
-      "on the smallest plan that's safe. I'll always flag a cheaper shape before you overpay."
+      '$0 right now. At real production size the equivalent of your Supabase setup lands well under ' +
+      "typical Supabase Pro spend — and I'll always show you the live number in the monitor. You get " +
+      "a 99.99% SLA, no usage-based surprises, and I keep you on the smallest plan that's safe. I'll " +
+      'always flag a cheaper shape before you overpay.'
     )
   if (/(risk|wrong|down|fail|secure|safe|backup)/.test(s))
     return (
       "Two things I'm keeping an eye on. One: you have a single Postgres node on the demo plan — for " +
-      'production I’d add a read replica so a node failure is invisible. Two: your busiest table ' +
-      'is `reactions`; if writes spike I may suggest an index tweak. Backups are automatic and ' +
-      "point-in-time on Aiven, so a bad deploy is recoverable. Nothing's on fire — these are the " +
-      'next moves, not problems.'
+      'production I’d add a read replica so a node failure is invisible. Two: if writes spike on your ' +
+      'busiest table I may suggest an index tweak. Backups are automatic and point-in-time on Aiven, ' +
+      "so a bad deploy is recoverable. Nothing's on fire — these are the next moves, not problems."
     )
   // database / general
   return (
-    'Healthy. Postgres is `running` with **172 rows** across users, posts and reactions, pgvector ' +
-    'search is live, and queries are returning in single-digit milliseconds. Kafka is up with your ' +
-    "realtime bridge topic flowing. You're well under plan limits on CPU and storage. I'll keep " +
-    'watching and only interrupt you when something actually needs a decision.'
+    'Healthy. Postgres is `running`, pgvector search is live, and queries are returning fast, well ' +
+    'within target. Kafka is up with your realtime bridge topic flowing. You’re well ' +
+    'under plan limits on CPU and storage. I keep watching and only interrupt you when something ' +
+    'actually needs a decision.'
   )
 }
 

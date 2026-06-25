@@ -13,7 +13,7 @@
 // deterministic infra summary built straight from get_metrics() so the panel is never empty.
 
 import Anthropic from '@anthropic-ai/sdk'
-import { q, q1 } from '../aiven/pg.ts'
+import { q, q1, qReadOnly } from '../aiven/pg.ts'
 import { AIVEN_PROJECT, hasAivenToken, hasAnthropic } from './env.ts'
 
 // ───────────────────────── config ─────────────────────────
@@ -225,10 +225,21 @@ function systemPrompt(tenantId: string): string {
     `Tone: calm, plain-English, reassuring, senior. Lead with the answer. Be concrete and specific —`,
     `always ground claims in the real numbers you read from their infra, never vague reassurance.`,
     ``,
+    `You are NOT just a chat box — you are an always-on monitor. A background loop checks their infra`,
+    `every ~20s and keeps a live snapshot + a rolling alert feed. Use get_state to see what you are`,
+    `currently watching and any open alerts, so you can answer "what's wrong / what are you watching"`,
+    `instantly without re-deriving everything.`,
+    ``,
     `You have read-only tools that read their ACTUAL infrastructure:`,
+    `- get_state(): the full live monitor snapshot — pg/kafka health, plan, rows, connections, cache`,
+    `  hit ratio, CPU/mem/disk %, monthly cost vs. Supabase, what you're watching, and current alerts.`,
+    `  Call this first for "what's the status / any alerts / what are you watching".`,
     `- get_metrics(): a live snapshot (connections, cache hit ratio, DB size, table sizes + row`,
-    `  counts, whether semantic search has an index). Call this first for any "how's my DB / should`,
+    `  counts, whether semantic search has an index). Call this for a deeper "how's my DB / should`,
     `  I scale / is it healthy" question.`,
+    `- get_resource_metrics(): latest CPU / memory / disk % + connection counts from Aiven metrics.`,
+    `- get_slow_queries(): the slowest queries (pg_stat_statements); says so plainly if not enabled.`,
+    `- get_cost(): Postgres + Kafka monthly cost and the Supabase Pro comparison.`,
     `- query_pg(sql): run a single READ-ONLY SELECT against their Postgres for a specific fact`,
     `  (e.g. a row count, a recent record). Reads only — writes are rejected.`,
     `- list_services() / get_service(name): their Aiven services (plan, state, cloud region).`,
@@ -309,6 +320,38 @@ function toolDefs(): Anthropic.Tool[] {
         additionalProperties: false,
       },
     },
+    {
+      name: 'get_state',
+      description:
+        'Get the FULL live monitor snapshot the always-on CTO keeps in memory: Postgres + Kafka health, ' +
+        'plan, total rows, connections, cache hit ratio, CPU/memory/disk %, monthly cost vs. Supabase, ' +
+        'what the monitor is watching, and the current rolling alert feed. Call this first for ' +
+        '"what is the status / are there any alerts / what are you watching" questions.',
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    },
+    {
+      name: 'get_resource_metrics',
+      description:
+        'Get the latest CPU %, memory %, disk % and connection counts read from the Aiven service ' +
+        'metrics. Use for "is it under load / how busy is the database" questions. Values may be null ' +
+        'if a metric was not available this tick.',
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    },
+    {
+      name: 'get_slow_queries',
+      description:
+        'Get the slowest queries (top 5 by total execution time) from pg_stat_statements. If the ' +
+        'extension is not enabled this returns a clear "unavailable" note — not an error. Use for ' +
+        '"what is slow / what should I optimize" questions.',
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    },
+    {
+      name: 'get_cost',
+      description:
+        'Get the monthly cost: Postgres + Kafka plan pricing (USD/month) and the Supabase Pro ' +
+        'comparison baseline. Use for "what does this cost / how does it compare to Supabase" questions.',
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    },
   ]
 }
 
@@ -327,7 +370,10 @@ async function runTool(tenantId: string, name: string, input: any): Promise<stri
       const cs = tenantConnString(tenantId)
       if (!cs) return JSON.stringify({ error: 'no database connection configured for this tenant' })
       try {
-        const rows = await q(cs, sql)
+        // Defense-in-depth behind assertReadOnly: run in an enforced READ ONLY transaction with a
+        // statement timeout, so Postgres rejects any write and caps blocking calls (pg_sleep, heavy
+        // scans) — this path runs model-shaped SQL on a superuser (avnadmin) connection.
+        const rows = await qReadOnly(cs, sql, 5000)
         // Cap the payload so a wide SELECT can't blow up the context window.
         const capped = rows.slice(0, 50)
         return JSON.stringify({ rowCount: rows.length, rows: capped })
@@ -370,6 +416,34 @@ async function runTool(tenantId: string, name: string, input: any): Promise<stri
         return JSON.stringify({ error: e?.message ?? String(e) })
       }
     }
+    case 'get_state': {
+      // Dynamic import avoids a static cycle (monitor.ts imports getPgMetrics from here).
+      const mon = await import('./monitor.ts')
+      return JSON.stringify(await mon.getCtoState(tenantId))
+    }
+    case 'get_resource_metrics': {
+      const mon = await import('./monitor.ts')
+      const rm = await mon.getResourceMetrics()
+      if (rm.cpuPct == null && rm.memPct == null && rm.diskPct == null) {
+        return JSON.stringify({ ...rm, note: 'Aiven resource metrics were unavailable this tick.' })
+      }
+      return JSON.stringify(rm)
+    }
+    case 'get_slow_queries': {
+      const mon = await import('./monitor.ts')
+      const sq = await mon.getSlowQueries(tenantId)
+      if (sq == null) {
+        return JSON.stringify({
+          available: false,
+          note: 'pg_stat_statements is not enabled on this database, so per-query timings are unavailable.',
+        })
+      }
+      return JSON.stringify({ available: true, slowQueries: sq })
+    }
+    case 'get_cost': {
+      const mon = await import('./monitor.ts')
+      return JSON.stringify(await mon.getCost(tenantId))
+    }
     default:
       return JSON.stringify({ error: `unknown tool: ${name}` })
   }
@@ -386,6 +460,14 @@ function toolNotice(name: string, input: any): string {
       return 'Listing your Aiven services…'
     case 'get_service':
       return `Checking service ${input?.name ?? ''}…`.trim()
+    case 'get_state':
+      return 'Reading the live monitor snapshot…'
+    case 'get_resource_metrics':
+      return 'Checking CPU / memory / disk utilization…'
+    case 'get_slow_queries':
+      return 'Looking for slow queries…'
+    case 'get_cost':
+      return 'Calculating your monthly cost…'
     default:
       return `Calling ${name}…`
   }
@@ -428,8 +510,12 @@ export async function ctoChat(opts: CtoChatOpts, emit: (chunk: CtoChunk) => void
       } as Anthropic.MessageStreamParams)
 
       // Stream text deltas straight through to the caller as they arrive.
+      let streamedThisTurn = false
       stream.on('text', (delta) => {
-        if (delta) emit({ type: 'text', value: delta })
+        if (delta) {
+          streamedThisTurn = true
+          emit({ type: 'text', value: delta })
+        }
       })
 
       const final = await stream.finalMessage()
@@ -448,8 +534,21 @@ export async function ctoChat(opts: CtoChatOpts, emit: (chunk: CtoChunk) => void
         return
       }
 
+      // If the model narrated before calling tools ("I'll pull your live snapshot…"), separate that
+      // preamble from the answer it will stream next turn so they don't run together ("now.Your DB…").
+      if (streamedThisTurn) emit({ type: 'text', value: '\n\n' })
+
       // Echo the assistant turn (must include the tool_use blocks) before sending results.
-      messages.push({ role: 'assistant', content: final.content })
+      // Strip thinking/redacted_thinking blocks: with adaptive thinking the pinned SDK (0.32.1)
+      // re-serializes streamed thinking blocks with an empty `thinking` field, which the API then
+      // rejects on the next turn ("each thinking block must contain thinking"). The text + tool_use
+      // blocks are all the loop needs to continue.
+      // (b.type is cast to string: SDK 0.32.1's ContentBlock union predates the thinking block
+      // types, but they appear at runtime when adaptive thinking is on.)
+      const replayContent = final.content.filter(
+        (b) => (b.type as string) !== 'thinking' && (b.type as string) !== 'redacted_thinking',
+      )
+      messages.push({ role: 'assistant', content: replayContent })
 
       const results: Anthropic.ToolResultBlockParam[] = []
       for (const tu of toolUses) {

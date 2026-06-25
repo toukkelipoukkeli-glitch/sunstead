@@ -1,0 +1,40 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aiven-architect-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "ideas/architecture-advisor/web",
+      "port": 5173
+    },
+    {
+      "name": "hivemind",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "cwd": "ideas/hivemind",
+      "port": 3741
+    },
+    {
+      "name": "pulsewall",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174", "--strictPort"],
+      "cwd": "demo/pulsewall",
+      "port": 5174
+    },
+    {
+      "name": "deck",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4599"],
+      "cwd": "deck",
+      "port": 4599
+    },
+    {
+      "name": "overmind-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:web"],
+      "cwd": "overmind",
+      "port": 5180
+    }
+  ]
+}

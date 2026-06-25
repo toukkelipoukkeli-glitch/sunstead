@@ -11,6 +11,7 @@
 
 import { useState } from 'react'
 import './product.css'
+import { apiFetch, apiUrl } from './config.ts'
 
 // The four scopes an agent can request. `migration:run` + `migration:read` are exactly what
 // POST /api/run requires — least privilege by default (see server/workos.ts DEFAULT_AGENT_SCOPES).
@@ -92,7 +93,7 @@ export default function Signup() {
     setErr(null)
     setCreds(null)
     try {
-      const res = await fetch('/api/agents/register', {
+      const res = await apiFetch('/api/agents/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, orgId: org || undefined, scopes }),
@@ -131,7 +132,7 @@ export default function Signup() {
         </a>
         <div className="pp-top-right">
           <span>Already in? </span>
-          <a href="/api/auth/login">Sign in</a>
+          <a href={apiUrl('/api/auth/login')}>Sign in</a>
         </div>
       </header>
 
@@ -154,7 +155,7 @@ export default function Signup() {
             <p className="pp-human-sub">
               Hosted login via WorkOS AuthKit. No password to manage, SSO-ready, free.
             </p>
-            <a className="pp-btn pp-btn-dark pp-btn-block pp-btn-lg" href="/api/auth/login">
+            <a className="pp-btn pp-btn-dark pp-btn-block pp-btn-lg" href={apiUrl('/api/auth/login')}>
               Continue with AuthKit →
             </a>
             <p className="pp-fineprint">

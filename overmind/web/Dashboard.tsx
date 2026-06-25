@@ -198,7 +198,7 @@ const PHASE_HEADLINE: Record<RunPhase, string> = {
   verify: 'Verifying parity, auth, realtime & search',
   cutover: 'Cutting over to Aiven',
   operate: 'Operating live — CTO on watch',
-  done: 'Migration complete — 100% on Aiven',
+  done: 'Graduated to Aiven — heavy layer live, CTO on watch',
   error: 'Run halted — see log',
 }
 
@@ -382,7 +382,7 @@ export default function Dashboard() {
           </div>
           <div className="rr-pct">
             <span className="rr-n">{readiness}%</span>
-            <span className="rr-l">migrated to Aiven</span>
+            <span className="rr-l">heavy layer on Aiven</span>
           </div>
         </div>
       </div>
@@ -394,7 +394,7 @@ export default function Dashboard() {
           </span>
           <div className="db-body">
             <div className="db-title">
-              Migration complete · {state.doneReadiness ?? readiness}% on Aiven
+              Graduated · {state.doneReadiness ?? readiness}% of the heavy layer on Aiven
             </div>
             <div className="db-sub">{state.doneSummary ?? 'Live on the Aiven plane — CTO operator now on watch.'}</div>
           </div>

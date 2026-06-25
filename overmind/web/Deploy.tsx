@@ -1,6 +1,6 @@
 // web/Deploy.tsx — "Connect your app". The one button that starts everything.
 //
-// A field prefilled with the demo source (../demo/live-hype-wall), the exact list of what the
+// A field prefilled with a neutral source placeholder, the exact list of what the
 // swarm will do — straight from shared/types.ts RunPhase — and a big "Graduate to Aiven" button
 // that POSTs /api/run { source } then navigates to Mission Control (#/app).
 //
@@ -11,9 +11,10 @@
 
 import { useState } from 'react'
 import './product.css'
+import { apiFetch, apiUrl } from './config.ts'
 
-// The demo source the orchestrator scans (server/env.ts SOURCE_REPO_DIR default).
-const DEMO_SOURCE = '../demo/live-hype-wall'
+// Neutral placeholder shown in the visible "Source app" field — a real Lovable/repo source shape.
+const DEMO_SOURCE = 'github.com/your-org/your-lovable-app'
 
 // The visible phases, mapped from shared/types.ts RunPhase. We collapse `plan` into provision and
 // hide the terminal `done`/`error` — what the founder sees is the nine actions the swarm performs.
@@ -23,10 +24,10 @@ const PHASES: { phase: string; name: string; target?: string; detail: string }[]
   { phase: 'graph', name: 'Behavior graph', detail: 'Classify every behavior: direct-migrate, rewrite onto Aiven, or generate a replacement.' },
   { phase: 'provision', name: 'Provision', target: 'MCP', detail: 'Spin up Aiven for PostgreSQL® + Apache Kafka® live, via the Aiven MCP. Every action receipted.' },
   { phase: 'migrate', name: 'Migrate', target: 'Postgres', detail: 'Copy schema + data into Aiven PG with row-count parity. pgvector and indexes included.' },
-  { phase: 'generate', name: 'Generate backend', target: 'Surgeon', detail: 'Emit a real Aiven-native backend — own JWT auth, data API, Kafka→SSE realtime, vector search.' },
+  { phase: 'generate', name: 'Generate backend', target: 'Surgeon', detail: 'Emit a real Aiven-native data plane — data API, Kafka→SSE realtime, vector search.' },
   { phase: 'heal', name: 'Self-heal', detail: 'Boot the generated backend, run smoke tests, feed any error back to the Healer until green.' },
   { phase: 'verify', name: 'Verify', detail: 'Row-count parity, auth flow, query, Kafka roundtrip, vector search — every check must pass.' },
-  { phase: 'cutover', name: 'Cut over', detail: 'Flip traffic to Aiven. Zero Supabase left running. Zero feature flags.' },
+  { phase: 'cutover', name: 'Cut over', detail: 'Flip reads/writes to Aiven with zero downtime and zero feature flags — your Lovable app never goes dark.' },
   { phase: 'operate', name: 'Operate', target: 'CTO', detail: 'Your Aiven CTO agent takes over — watches metrics, advises, scales. You never touch the dashboard.' },
 ]
 
@@ -39,17 +40,16 @@ export default function Deploy() {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch('/api/run', {
+      const res = await apiFetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // credentials so a logged-in human's session cookie rides along (requireHumanOrAgent).
-        credentials: 'include',
         body: JSON.stringify({ source }),
       })
       if (!res.ok) {
         // 401 → not signed in. Send them through AuthKit, returning here.
         if (res.status === 401) {
-          window.location.href = '/api/auth/login'
+          window.location.href = apiUrl('/api/auth/login')
           return
         }
         throw new Error(`run failed: ${res.status} ${await res.text()}`)
@@ -86,8 +86,9 @@ export default function Deploy() {
           <span className="pp-grad">Graduate it to Aiven.</span>
         </h1>
         <p className="pp-lede">
-          One click hands your Lovable/Supabase backend to an agent swarm. It rebuilds every
-          behavior on Aiven — live — and self-heals until every test is green.
+          One click hands your Lovable/Supabase backend to an agent swarm. It graduates the parts
+          that need Aiven scale — data, realtime, vector search — live, self-heals until every test
+          is green, and leaves the rest running on Lovable.
         </p>
 
         <div className="pp-deploy-grid" style={{ marginTop: 36 }}>
@@ -179,9 +180,9 @@ export default function Deploy() {
                 </div>
               </div>
               <div className="pp-stat">
-                <div className="pp-stat-k">Supabase left running</div>
+                <div className="pp-stat-k">Downtime at cutover</div>
                 <div className="pp-stat-v" style={{ color: 'var(--pp-red)' }}>
-                  0 <small>zero flags, full cutover</small>
+                  0 <small>zero flags, hot cutover</small>
                 </div>
               </div>
               <div className="pp-stat">
