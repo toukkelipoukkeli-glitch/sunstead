@@ -38,7 +38,7 @@ What works now:
 - The scanner reads real source files and detects Supabase tables, Realtime, Auth, Storage, RLS, Edge/RPC markers, triggers, and pgvector.
 - The one-click route runs live against Aiven Postgres.
 - The scoped runtime reads, writes, and reads back browser events through Aiven Postgres.
-- The Anthropic Agent SDK is used as a bounded text-only Report/CTO Agent.
+- The Anthropic Agent SDK is used as a bounded Aiven MCP control-plane and Report/CTO Agent.
 
 What is still PulseWall-specific:
 

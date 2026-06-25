@@ -55,13 +55,15 @@ Migration Executor
   -> no Aiven service mutation
   -> no shell commands
   -> no file edits
-  -> no MCP tools
+  -> allowlisted Aiven MCP control-plane tools only
   -> no secret handling
 ```
 
 This preserves the core product claim:
 
-> The agents are bounded operators. The LLM writes explanations; deterministic tools execute the migration and leave receipts.
+> The agents are bounded operators. The Agent SDK can inspect Aiven through MCP; deterministic tools
+> execute the current data-plane migration and leave receipts until equivalent MCP write/read actions
+> are reliable.
 
 ## SDK Boundary
 
@@ -77,8 +79,14 @@ Use the SDK `query()` API with restrictive options:
 query({
   prompt,
   options: {
-    maxTurns: 1,
-    tools: [],
+    maxTurns: 2,
+    allowedTools: [
+      "mcp__aiven__aiven_project_list",
+      "mcp__aiven__aiven_service_list",
+      "mcp__aiven__aiven_service_get",
+      "mcp__aiven__aiven_pg_service_available_extensions",
+      "mcp__aiven__aiven_kafka_topic_list"
+    ],
     disallowedTools: [
       "Bash",
       "Edit",
@@ -90,10 +98,15 @@ query({
       "WebSearch",
       "Agent"
     ],
-    mcpServers: {},
+    mcpServers: {
+      aiven: {
+        type: "http",
+        url: process.env.AIVEN_MCP_URL ?? "https://mcp.aiven.live/mcp?allow_secrets=true"
+      }
+    },
     strictMcpConfig: true,
     settingSources: [],
-    permissionMode: "default",
+    permissionMode: "dontAsk",
     env: {
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY
     }
@@ -103,10 +116,11 @@ query({
 
 Notes:
 
-- `tools: []` and `disallowedTools` keep the agent text-only.
-- `strictMcpConfig: true` prevents project MCP tools from being exposed to this reasoner.
+- `allowedTools` and the permission callback limit the SDK to explicit Aiven MCP tools.
+- `disallowedTools` keeps local shell/file/web/subagent tools unavailable.
+- `strictMcpConfig: true` prevents project or user MCP settings from being exposed to this reasoner.
 - `settingSources: []` prevents local Claude settings from unexpectedly adding tools or behavior.
-- `maxTurns: 1` prevents a multi-step agent loop.
+- `maxTurns: 2` allows one MCP inspection pass and a final answer.
 - The deterministic fallback remains required.
 
 ## Env Contract
@@ -219,14 +233,15 @@ If the SDK fails:
 - With Anthropic enabled, `proof.package.generated.details.reasoner` is `anthropic_agent_sdk` unless the SDK fails.
 - If the SDK fails, the run still completes with deterministic report text and `reasonerFallback: true`.
 - No secrets are printed, committed, sent to the browser, or included in reasoner prompts.
-- The Agent SDK cannot call shell, edit files, read arbitrary files, use MCP, or mutate infrastructure from this reasoner path.
+- The Agent SDK cannot call shell, edit files, read arbitrary files, use non-Aiven MCP, or mutate infrastructure from this reasoner path.
+- The Agent SDK receives the Aiven MCP endpoint directly through `mcpServers`; Codex MCP config is not the runtime control plane.
 - The SDK can use a configured standalone Claude Code executable when the bundled native binary is not reliable.
 
 ## Presenter Language
 
 Use this if asked where Anthropic comes in:
 
-> Aiden uses Anthropic's Agent SDK for the Report and CTO Agent. The migration itself is controlled by deterministic typed operators; the SDK turns sanitized receipts, checks, and blockers into the executive recommendation.
+> Aiden uses Anthropic's Agent SDK as the Aiven-aware control-plane and Report/CTO Agent. It can inspect Aiven through MCP, while deterministic typed operators execute the current data-plane migration and label any direct fallback receipts.
 
 Use this if the SDK falls back:
 

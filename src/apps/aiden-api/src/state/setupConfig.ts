@@ -1,4 +1,6 @@
 import type { SetupProfile } from "@aiden/contracts"
+import type { CsvSourceInput } from "@aiden/contracts"
+import { configureCsvSources, getConfiguredCsvSourceSummary } from "@aiden/aiven-ops"
 
 export type SetupProfileRequest = {
   setupProfile?: Partial<SetupProfile>
@@ -6,6 +8,7 @@ export type SetupProfileRequest = {
   sourceTables?: string
   sourceCopyLimit?: string
   sourceSslDisabled?: boolean
+  csvSources?: CsvSourceInput[]
 }
 
 const clean = (value: unknown) => (typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined)
@@ -53,6 +56,9 @@ export const applySetupRuntimeConfig = (input: SetupProfileRequest = {}) => {
   if (typeof input.sourceSslDisabled === "boolean") {
     process.env.SOURCE_SUPABASE_SSL = input.sourceSslDisabled ? "false" : "true"
   }
+  if (Array.isArray(input.csvSources)) {
+    configureCsvSources(input.csvSources)
+  }
 
   return {
     ok: true,
@@ -60,7 +66,8 @@ export const applySetupRuntimeConfig = (input: SetupProfileRequest = {}) => {
       sourceDbUrl: Boolean(sourceDbUrl || process.env.SOURCE_SUPABASE_DB_URL || process.env.SOURCE_POSTGRES_URL),
       sourceTables: sourceTables ?? process.env.SOURCE_SUPABASE_TABLES ?? process.env.SOURCE_POSTGRES_TABLES ?? null,
       sourceCopyLimit: sourceCopyLimit ?? process.env.SOURCE_COPY_LIMIT ?? null,
-      sourceSslDisabled: process.env.SOURCE_SUPABASE_SSL === "false"
+      sourceSslDisabled: process.env.SOURCE_SUPABASE_SSL === "false",
+      csvSources: getConfiguredCsvSourceSummary()
     }
   }
 }

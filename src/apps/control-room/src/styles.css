@@ -366,6 +366,38 @@ button {
   font-weight: 750;
 }
 
+.setup-connection-status {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-radius: var(--radius-sm, 4px);
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.setup-connection-status-warning {
+  border: 1px solid #f0c36b;
+  color: #744210;
+  background: #fff8e6;
+}
+
+.setup-connection-status-success {
+  border: 1px solid #b2f2bb;
+  color: #07583a;
+  background: var(--console-success-soft, #effef4);
+}
+
+.github-repo-list {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.github-repo-list .ghost-button {
+  width: auto;
+}
+
 .setup-checkbox-field {
   display: flex !important;
   grid-template-columns: none;
@@ -383,6 +415,17 @@ button {
   color: var(--console-text-muted, #68696b);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.setup-csv-list {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+}
+
+.setup-csv-list label {
+  grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
 }
 
 .setup-column {

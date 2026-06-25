@@ -66,6 +66,12 @@ export type SourceDataPath =
   | "pg_dump_files"
   | "csv_export"
 
+export type CsvSourceInput = {
+  fileName: string
+  tableName: string
+  csvText: string
+}
+
 export type AivenWorkspaceMode =
   | "henri_preconnected"
   | "connect_existing"

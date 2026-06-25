@@ -9,6 +9,7 @@ type GitHubAppConfig = {
   privateKey: string
   apiBaseUrl: string
   webBaseUrl: string
+  setupUrl?: string
 }
 
 export type GitHubRepositorySummary = {
@@ -35,6 +36,28 @@ export type MaterializedGitHubSource = {
   filesWritten: number
   bytesWritten: number
   github: GitHubSourceRef
+}
+
+export type GitHubManifest = {
+  name: string
+  url: string
+  redirect_url: string
+  callback_urls: string[]
+  setup_url: string
+  description: string
+  public: boolean
+  default_permissions: Record<string, "read" | "write">
+  default_events: string[]
+  request_oauth_on_install: boolean
+  setup_on_update: boolean
+}
+
+export type GitHubManifestConversion = {
+  id: number
+  slug: string
+  pem: string
+  htmlUrl?: string
+  setupUrl?: string
 }
 
 type GitHubRepoResponse = {
@@ -72,6 +95,13 @@ type GitHubBlobResponse = {
   content?: string
   encoding?: string
   size?: number
+}
+
+type GitHubManifestConversionResponse = {
+  id?: number
+  slug?: string
+  pem?: string
+  html_url?: string
 }
 
 const defaultApiBaseUrl = "https://api.github.com"
@@ -117,24 +147,101 @@ const readGitHubAppConfig = (): GitHubAppConfig | undefined => {
     slug,
     privateKey,
     apiBaseUrl: readEnv("GITHUB_API_BASE_URL") ?? defaultApiBaseUrl,
-    webBaseUrl: readEnv("GITHUB_WEB_BASE_URL") ?? defaultWebBaseUrl
+    webBaseUrl: readEnv("GITHUB_WEB_BASE_URL") ?? defaultWebBaseUrl,
+    setupUrl: readEnv("GITHUB_APP_INSTALL_CALLBACK_URL") ?? readEnv("GITHUB_APP_SETUP_URL")
   }
 }
 
 export const getGitHubInstallUrl = () => {
+  const rawPrivateKey = readEnv("GITHUB_APP_PRIVATE_KEY")
+  const privateKeyBase64 = readEnv("GITHUB_APP_PRIVATE_KEY_BASE64")
+  const missingEnv = [
+    readEnv("GITHUB_APP_ID") ? undefined : "GITHUB_APP_ID",
+    readEnv("GITHUB_APP_SLUG") ? undefined : "GITHUB_APP_SLUG",
+    rawPrivateKey || privateKeyBase64 ? undefined : "GITHUB_APP_PRIVATE_KEY_BASE64"
+  ].filter((item): item is string => Boolean(item))
+
   const config = readGitHubAppConfig()
   if (!config) {
     return {
       configured: false,
       url: undefined,
-      missingEnv: ["GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_PRIVATE_KEY_BASE64"]
+      setupUrl: readEnv("GITHUB_APP_INSTALL_CALLBACK_URL") ?? readEnv("GITHUB_APP_SETUP_URL"),
+      missingEnv
     }
   }
 
   return {
     configured: true,
     url: `${config.webBaseUrl}/apps/${encodeURIComponent(config.slug)}/installations/new`,
+    setupUrl: config.setupUrl,
     missingEnv: []
+  }
+}
+
+export const buildGitHubAppManifest = (input: { setupUrl: string; appNameSuffix?: string }): GitHubManifest => {
+  const setupUrl = input.setupUrl.trim()
+  const appUrl = new URL(setupUrl).origin
+  const suffix = input.appNameSuffix?.trim() || String(Date.now()).slice(-6)
+  return {
+    name: `Aiden Local Connector ${suffix}`,
+    url: appUrl,
+    redirect_url: setupUrl,
+    callback_urls: [setupUrl],
+    setup_url: setupUrl,
+    description: "Local Aiden connector for reading selected GitHub repositories during behavior migration planning.",
+    public: false,
+    default_permissions: {
+      contents: "read",
+      metadata: "read"
+    },
+    default_events: [],
+    request_oauth_on_install: false,
+    setup_on_update: true
+  }
+}
+
+export const exchangeGitHubManifestCode = async (input: {
+  code: string
+  setupUrl?: string
+}): Promise<GitHubManifestConversion> => {
+  const code = input.code.trim()
+  if (!code) throw new Error("GitHub manifest code is required.")
+  const apiBaseUrl = readEnv("GITHUB_API_BASE_URL") ?? defaultApiBaseUrl
+  const response = await fetch(`${apiBaseUrl}/app-manifests/${encodeURIComponent(code)}/conversions`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    throw new Error(`GitHub manifest conversion failed ${response.status} ${response.statusText}: ${text.slice(0, 240)}`)
+  }
+
+  const body = (await response.json()) as GitHubManifestConversionResponse
+  if (!body.id || !body.slug || !body.pem) {
+    throw new Error("GitHub manifest conversion did not return an app id, slug, and private key.")
+  }
+
+  return {
+    id: body.id,
+    slug: body.slug,
+    pem: body.pem,
+    htmlUrl: body.html_url,
+    setupUrl: input.setupUrl
+  }
+}
+
+export const applyGitHubManifestConversionToEnv = (conversion: GitHubManifestConversion) => {
+  process.env.GITHUB_APP_ID = String(conversion.id)
+  process.env.GITHUB_APP_SLUG = conversion.slug
+  process.env.GITHUB_APP_PRIVATE_KEY_BASE64 = Buffer.from(conversion.pem, "utf8").toString("base64")
+  if (conversion.setupUrl) {
+    process.env.GITHUB_APP_INSTALL_CALLBACK_URL = conversion.setupUrl
   }
 }
 

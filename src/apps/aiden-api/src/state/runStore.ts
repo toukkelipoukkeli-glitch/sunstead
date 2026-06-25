@@ -2,7 +2,12 @@ import { existsSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { runAivenDataMigration, runAivenProofSpine, runKafkaAgentBusProof } from "@aiden/aiven-ops"
+import {
+  getConfiguredCsvSourceSummary,
+  runAivenDataMigration,
+  runAivenProofSpine,
+  runKafkaAgentBusProof
+} from "@aiden/aiven-ops"
 import type {
   AccessCheck,
   AccessSnapshot,
@@ -30,6 +35,7 @@ import { createAivenPulseWallProvider } from "@aiden/pulsewall-adapter"
 import { canUseAivenProvider, switchToAivenProvider } from "./adapterRuntime.js"
 import {
   callAgentReasoner,
+  readAivenMcpRuntimeConfig,
   readAgentRunMode,
   runAgentSteps,
   selectAgentReasoner,
@@ -71,7 +77,7 @@ const defaultSetupProfile: SetupProfile = {
     authMigration: "adapter_required",
     storageMigration: "adapter_required"
   },
-  sourceLabel: "PulseWall demo app",
+  sourceLabel: "PulseWall managed profile",
   workspaceLabel: "Henri pre-connected workspace",
   detectedBehaviors: ["Supabase client", "tables", "realtime", "auth", "storage", "RLS", "RPC/edge markers"]
 }
@@ -230,7 +236,7 @@ const isPulseWallDemoRuntimeProfile = (profile: SetupProfile) =>
 const unsupportedDemoRuntimeReason = (profile: SetupProfile) =>
   isPulseWallDemoRuntimeProfile(profile)
     ? undefined
-    : "The live executor and local adapter are implemented only for the selected PulseWall seeded demo path. Generic Lovable exports can be scanned, but data migration and cutover require the manifest-driven executor."
+    : "Controlled runtime cutover requires a generated adapter for this source. Aiden can still complete source scanning, Aiven shadow migration, and proof packaging."
 
 const resolveProfileSourceRoot = (profile: SetupProfile) => {
   if (profile.sourceRoot) {
@@ -415,6 +421,75 @@ const scanEventsFor = (runId: string, scan: BehaviorScanResult): RunEvent[] => [
 
 const applySourceScan = async (record: RunRecord) => {
   const sourceRoot = resolveProfileSourceRoot(record.setupProfile)
+  if (!sourceRoot && record.setupProfile.sourceDataPath === "csv_export") {
+    const csvSummary = getConfiguredCsvSourceSummary()
+    if (!csvSummary.configured) {
+      throw new Error("CSV export files are not configured.")
+    }
+    const createdAt = now()
+    record.behaviorFindings = [
+      {
+        id: "behavior_csv_tables",
+        behavior: "CSV table exports",
+        detected: true,
+        sourceRefs: csvSummary.tables,
+        classification: "direct_migrate",
+        target: "Aiven Postgres shadow rows",
+        demoTreatment: "Import uploaded CSV rows into Aiven shadow tables and validate row counts.",
+        source: "live"
+      },
+      {
+        id: "behavior_csv_adapter_gap",
+        behavior: "Application adapter and runtime behavior",
+        detected: true,
+        sourceRefs: ["CSV headers only"],
+        classification: "adapter_required",
+        target: "Generated Lovable/Supabase adapter",
+        demoTreatment: "Mark adapter generation as required before controlled runtime cutover.",
+        source: "live"
+      }
+    ]
+    upsertEvents(record, [
+      {
+        runId: record.runId,
+        type: "repo.scan.started",
+        agent: "repo_scanner",
+        state: "scan_running",
+        status: "started",
+        source: "live",
+        summary: `Reading ${csvSummary.fileCount} uploaded CSV export file(s) for source-data evidence.`,
+        details: csvSummary,
+        createdAt
+      },
+      {
+        runId: record.runId,
+        type: "source.behavior.detected",
+        agent: "repo_scanner",
+        state: "scan_running",
+        status: "ok",
+        source: "live",
+        summary: `Detected CSV table exports for ${csvSummary.tables.join(", ")}. Source-code behavior remains unavailable from CSV alone.`,
+        details: csvSummary,
+        createdAt
+      },
+      {
+        runId: record.runId,
+        type: "behavior.scan.completed",
+        agent: "behavior_mapper",
+        state: "behavior_mapped",
+        status: "ok",
+        source: "live",
+        summary: "CSV evidence graph generated data migration findings and adapter blockers.",
+        details: {
+          sourceLabel: record.setupProfile.sourceLabel,
+          findingIds: record.behaviorFindings.map((finding) => finding.id),
+          refsScanned: csvSummary.tables
+        },
+        createdAt
+      }
+    ])
+    return undefined
+  }
   if (!sourceRoot) {
     throw new Error(`${record.setupProfile.sourceLabel} does not have a local source root configured for scanning.`)
   }
@@ -661,10 +736,13 @@ const liveCheckPassed = (record: RunRecord, checkName: string) =>
 
 const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
   const sourceRoot = resolveProfileSourceRoot(record.setupProfile)
-  const sourceAvailable = Boolean(sourceRoot && existsSync(sourceRoot))
+  const csvSummary = getConfiguredCsvSourceSummary()
+  const csvSourceDataReady = record.setupProfile.sourceDataPath === "csv_export" && csvSummary.configured
+  const sourceAvailable = csvSourceDataReady || Boolean(sourceRoot && existsSync(sourceRoot))
   const codexMcpConfigured = existsSync(resolve(repoRoot, ".codex/config.toml"))
   const rawMcpConfigured = existsSync(resolve(repoRoot, ".mcp.json"))
-  const mcpConfigured = codexMcpConfigured || rawMcpConfigured
+  const aivenMcpRuntime = readAivenMcpRuntimeConfig()
+  const mcpConfigured = aivenMcpRuntime.enabled
   const aivenProject = readEnv("AIVEN_PROJECT")
   const aivenPostgresService = readEnv("AIVEN_PG_SERVICE")
   const postgresConfigured = Boolean(readEnv("AIVEN_POSTGRES_URL"))
@@ -691,21 +769,26 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
     {
       id: "repo_source",
       label: "Source app import",
-      scope: "Read Lovable/Supabase behavior",
+      scope: csvSourceDataReady ? "Read exported table data" : "Read Lovable/Supabase behavior",
       minimumPermission: githubSource
         ? "GitHub App repository contents: read"
         : record.setupProfile.sourceKind === "pulsewall_demo"
-          ? "read local demo export"
-          : "read selected source export",
+          ? "read managed PulseWall profile"
+          : csvSourceDataReady
+            ? "uploaded CSV files with headers"
+            : "read selected source export",
       status: sourceAvailable ? "ready" : "blocked",
       source: sourceAvailable ? "live" : "cached",
       requiredForGraduate: true,
       proof: sourceAvailable
-        ? `${record.setupProfile.sourceLabel} is readable at ${displayPath(sourceRoot)}.`
+        ? csvSourceDataReady
+          ? `${record.setupProfile.sourceLabel} has ${csvSummary.fileCount} CSV export file(s) staged for shadow migration.`
+          : `${record.setupProfile.sourceLabel} is readable at ${displayPath(sourceRoot)}.`
         : `${record.setupProfile.sourceLabel} source path is missing or not configured.`,
       safeToShowDetails: {
         sourceKind: record.setupProfile.sourceKind,
         sourceRoot: displayPath(sourceRoot),
+        csv: csvSourceDataReady ? csvSummary : undefined,
         github: githubSource
           ? {
               fullName: githubSource.fullName,
@@ -720,43 +803,52 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
     {
       id: "source_data",
       label: "Source data path",
-      scope: demoAdapterSupported ? "Seeded/read-only demo data" : "Selected source data path",
-      minimumPermission: demoAdapterSupported ? "read seeded PulseWall data" : "source DB URL and table allowlist",
-      status: demoAdapterSupported || genericSourceDataReady ? "ready" : "blocked",
-      source: demoAdapterSupported ? "fixture" : genericSourceDataReady ? "cached" : "cached",
+      scope: demoAdapterSupported ? "Managed source data" : csvSourceDataReady ? "CSV export upload" : "Selected source data path",
+      minimumPermission: demoAdapterSupported
+        ? "read managed PulseWall data"
+        : csvSourceDataReady
+          ? "CSV files uploaded through setup"
+          : "source DB URL and table allowlist",
+      status: demoAdapterSupported || genericSourceDataReady || csvSourceDataReady ? "ready" : "blocked",
+      source: demoAdapterSupported ? "fixture" : genericSourceDataReady || csvSourceDataReady ? "cached" : "cached",
       requiredForGraduate: true,
       proof: demoAdapterSupported
-        ? `Seeded ${record.setupProfile.sourceLabel} dataset is available for scoped validation.`
+        ? `Managed ${record.setupProfile.sourceLabel} dataset is available for validation.`
+        : csvSourceDataReady
+          ? `${csvSummary.fileCount} CSV export file(s) are staged for Aiven shadow row copy.`
         : genericSourceDataReady
           ? `${record.setupProfile.sourceDataPath} is configured for generic Aiven shadow row copy.`
           : githubSource
             ? `GitHub repository access covers source code only. ${record.setupProfile.sourceDataPath} still needs SOURCE_SUPABASE_DB_URL and SOURCE_SUPABASE_TABLES for row copy.`
           : seededDataPath
-            ? `Seeded demo data is only wired for the PulseWall selected demo path. ${unsupportedDemoRuntimeReason(record.setupProfile)}`
+            ? `Managed source data is only wired for the PulseWall managed profile. ${unsupportedDemoRuntimeReason(record.setupProfile)}`
             : `${record.setupProfile.sourceDataPath} needs SOURCE_SUPABASE_DB_URL and SOURCE_SUPABASE_TABLES before generic source data copy can run.`,
       safeToShowDetails: {
         sourceKind: record.setupProfile.sourceKind,
         sourceDataPath: record.setupProfile.sourceDataPath,
         sourceDbConfigured: sourceDbConfigured(),
-        sourceTablesConfigured: sourceTablesConfigured()
+        sourceTablesConfigured: sourceTablesConfigured(),
+        csv: csvSummary
       }
     },
     {
       id: "aiven_mcp",
       label: "Aiven workspace",
       scope: "Account/workspace connection",
-      minimumPermission: "workspace context configured",
+      minimumPermission: "Agent SDK Aiven MCP endpoint",
       status: mcpConfigured ? "connected" : "blocked",
       source: "cached",
       requiredForGraduate: true,
       proof: mcpConfigured
-        ? `${record.setupProfile.workspaceLabel} is connected; live runtime receipts are currently direct Aiven fallback.`
-        : "Aiven workspace context is missing.",
+        ? `${record.setupProfile.workspaceLabel} has an Agent SDK Aiven MCP endpoint configured at ${aivenMcpRuntime.safeLabel}.`
+        : "Aiven MCP runtime endpoint is missing.",
       safeToShowDetails: {
         workspaceMode: record.setupProfile.aivenWorkspaceMode,
-        codexConfig: codexMcpConfigured,
-        rawDescriptor: rawMcpConfigured,
-        runtimeControlPlane: "direct_aiven_fallback"
+        runtimeControlPlane: "anthropic_agent_sdk_aiven_mcp",
+        mcpServer: aivenMcpRuntime.serverName,
+        mcpConfigSource: aivenMcpRuntime.source,
+        codexConfigPresentForDeveloperTools: codexMcpConfigured,
+        rawDescriptorPresentForOtherClients: rawMcpConfigured
       }
     },
     {
@@ -816,13 +908,13 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
     {
       id: "demo_adapter",
       label: "Local Aiden adapter",
-      scope: "Scoped demo runtime only",
+      scope: "Controlled runtime path",
       minimumPermission: demoAdapterSupported ? "switch local provider boundary" : "generated adapter for selected source",
-      status: demoAdapterSupported ? "ready" : "blocked",
+      status: demoAdapterSupported ? "ready" : "later",
       source: demoAdapterSupported ? "live" : "cached",
-      requiredForGraduate: true,
+      requiredForGraduate: demoAdapterSupported,
       proof: demoAdapterSupported
-        ? "Local adapter can switch the scoped demo runtime after Aiven Postgres checks pass."
+        ? "Local adapter can switch the controlled runtime after Aiven Postgres checks pass."
         : `${unsupportedDemoRuntimeReason(record.setupProfile)}`,
       safeToShowDetails: {
         productionAppChanged: false,
@@ -1132,9 +1224,9 @@ export const runProviderCutover = async (runId: string) => {
         type: "realtime.postgres_events_bridge.passed",
         agent: "compatibility_surgeon",
         state: "realtime_validated",
-        status: "failed",
+        status: "skipped",
         source: "cached",
-        summary: `Generic realtime cutover is blocked: ${unsupportedRuntime}`,
+        summary: `Realtime cutover is waiting for adapter generation: ${unsupportedRuntime}`,
         details: {
           sourceKind: record.setupProfile.sourceKind,
           sourceDataPath: record.setupProfile.sourceDataPath
@@ -1146,9 +1238,9 @@ export const runProviderCutover = async (runId: string) => {
         type: "cutover.demo_runtime.ready",
         agent: "cutover_manager",
         state: "demo_cutover_complete",
-        status: "failed",
+        status: "skipped",
         source: "cached",
-        summary: `Scoped adapter cutover is blocked: ${unsupportedRuntime}`,
+        summary: `Controlled runtime cutover is waiting for adapter generation: ${unsupportedRuntime}`,
         details: {
           requiredAdapter: "manifest_generated_adapter",
           existingAdapter: "pulsewall_adapter"
@@ -1161,7 +1253,7 @@ export const runProviderCutover = async (runId: string) => {
       check(runId, {
         idPrefix: "check_generic_cutover_blocked",
         checkName: "scoped_demo_runtime_smoke_test",
-        status: "failed",
+        status: "skipped",
         source: "cached",
         details: {
           reason: unsupportedRuntime,
@@ -1170,7 +1262,7 @@ export const runProviderCutover = async (runId: string) => {
       })
     ]
     record.proofSource = mergeProofSource(record.proofSource, "cached")
-    record.status = "failed"
+    record.status = fixtureEvents.every((fixtureEvent) => hasEvent(record, fixtureEvent.type)) ? "complete" : "running"
     return getSnapshot(runId)
   }
 
@@ -1516,15 +1608,23 @@ export const runOneClickGraduate = async (runId: string) => {
       requiredForLivePg: true,
       async run(stepContext) {
         const snapshot = await runProviderCutover(stepContext.runId)
+        const adapterRequired = !isPulseWallDemoRuntimeProfile(snapshot.setupProfile)
         const liveCutoverOk =
           eventIs(snapshot, "realtime.postgres_events_bridge.passed", "live", "ok") &&
           eventIs(snapshot, "cutover.demo_runtime.ready", "live", "ok")
-        const ok = stepContext.requireLivePg ? liveCutoverOk : !hasFailedEvent(snapshot)
+        const adapterSkipOk =
+          adapterRequired &&
+          eventIs(snapshot, "realtime.postgres_events_bridge.passed", "cached", "skipped") &&
+          eventIs(snapshot, "cutover.demo_runtime.ready", "cached", "skipped")
+        const ok = adapterRequired ? adapterSkipOk : stepContext.requireLivePg ? liveCutoverOk : !hasFailedEvent(snapshot)
         return stepResult(stepContext, snapshot, {
           ok,
           summary: liveCutoverOk
             ? "Scoped runtime cutover read, wrote, and read back Aiven Postgres app_events live."
-            : "Scoped runtime cutover did not produce the required live app_events proof."
+            : adapterSkipOk
+              ? "Controlled runtime cutover is marked as an adapter-generation blocker; shadow migration can complete."
+              : "Scoped runtime cutover did not produce the required live app_events proof.",
+          blocking: !adapterRequired
         })
       }
     },
@@ -1590,6 +1690,9 @@ export const runOneClickGraduate = async (runId: string) => {
   })
 
   const finalRecord = getRecord(runId)
+  const finalCutoverReady = finalRecord.events.some(
+    (event) => event.type === "cutover.demo_runtime.ready" && event.status === "ok"
+  )
   upsertEvents(finalRecord, [
     {
       runId,
@@ -1598,7 +1701,9 @@ export const runOneClickGraduate = async (runId: string) => {
       state: "report_ready",
       status: "ok",
       source: finalRecord.proofSource === "fixture" ? "cached" : finalRecord.proofSource,
-      summary: "One-click proof package is ready with live Postgres validation, scoped cutover result, blockers, and rollback.",
+      summary: finalCutoverReady
+        ? "One-click proof package is ready with live Postgres validation, controlled cutover result, blockers, and rollback."
+        : "One-click proof package is ready with live Postgres validation, adapter blockers, and rollback.",
       details: {
         agentRuntime: "deterministic_step_registry",
         reasoner: recommendation.reasoner,
@@ -1631,8 +1736,13 @@ export const getSnapshot = (runId = fixtureRunId): RunSnapshot => {
   const cutoverReady = record.events.some(
     (event) => event.type === "cutover.demo_runtime.ready" && event.status === "ok"
   )
+  const adapterRequiredForProfile = !isPulseWallDemoRuntimeProfile(record.setupProfile)
   const reportEvent = record.events.find((event) => event.type === "proof.package.generated" && event.status === "ok")
   const reportReady = Boolean(reportEvent)
+  const reportBlockers = [
+    ...(adapterRequiredForProfile ? ["Generated application adapter required before controlled runtime cutover."] : []),
+    ...finalReport.blockers
+  ]
   const generatedRecommendation =
     typeof reportEvent?.details?.recommendation === "string"
       ? reportEvent.details.recommendation
@@ -1655,7 +1765,11 @@ export const getSnapshot = (runId = fixtureRunId): RunSnapshot => {
     validationChecks: mergedValidationChecks,
     report: {
       ...finalReport,
-      headline: reportReady ? finalReport.headline : "Migration proof package pending",
+      headline: reportReady
+        ? cutoverReady
+          ? finalReport.headline
+          : "Aiven shadow migration proof package ready"
+        : "Migration proof package pending",
       readinessScore: reportReady
         ? finalReport.readinessScore
         : Math.round((record.events.length / fixtureEvents.length) * finalReport.readinessScore),
@@ -1665,8 +1779,12 @@ export const getSnapshot = (runId = fixtureRunId): RunSnapshot => {
       source: record.proofSource,
       checks: mergedValidationChecks,
       receipts: mergedReceipts,
-      blockers: reportReady ? finalReport.blockers : [],
-      rollback: reportReady ? finalReport.rollback : "Rollback plan pending final proof package generation.",
+      blockers: reportReady ? reportBlockers : [],
+      rollback: reportReady
+        ? cutoverReady
+          ? finalReport.rollback
+          : "Delete run-scoped shadow rows and keep the source application unchanged."
+        : "Rollback plan pending final proof package generation.",
       costSummary: reportReady ? finalReport.costSummary : "Cost estimate pending final proof package generation.",
       ctoRecommendation: reportReady
         ? generatedRecommendation

@@ -247,15 +247,15 @@ Canonical doc: [anthropic-agent-sdk-reasoner/README.md](anthropic-agent-sdk-reas
 Owns:
 
 - Anthropic Agent SDK usage boundary;
-- text-only Report/CTO Agent implementation rules;
-- SDK tool/MCP/settings restrictions;
+- Aiven MCP Report/CTO Agent implementation rules;
+- SDK tool and settings restrictions;
 - deterministic fallback behavior;
 - reasoner metadata in the proof package;
 - Agent SDK verifier expectations.
 
-This protects the demo from accidentally turning Anthropic into the migration executor. The SDK may
-write summaries and recommendations from sanitized proof facts; deterministic tools still execute
-the migration.
+This protects the demo from accidentally turning Anthropic into an unbounded local executor. The SDK
+may inspect Aiven through allowlisted MCP tools and write summaries from sanitized proof facts;
+deterministic tools still execute the current data-plane migration.
 
 ## Useful But Not Blocking
 
@@ -282,7 +282,7 @@ These should not block coding the critical path.
 - Aiven account/workspace onboarding and demo workspace framing belong in `aiven-workspace-bootstrap/README.md`.
 - Source app/data/workspace setup before the control room belongs in `source-intake-workspace-setup/README.md`.
 - One-click agent runtime behavior belongs in `one-click-agent-runtime/README.md`.
-- Anthropic Agent SDK report/reasoner behavior belongs in `anthropic-agent-sdk-reasoner/README.md`.
+- Anthropic Agent SDK Aiven MCP report/reasoner behavior belongs in `anthropic-agent-sdk-reasoner/README.md`.
 
 If a fact appears in two places, one must clearly be canonical.
 
@@ -302,7 +302,7 @@ Code can begin when these are true:
 - `aiven-workspace-bootstrap/README.md` defines connect/create Aiven workspace framing and demo-safe use of Henri's pre-connected workspace.
 - `source-intake-workspace-setup/README.md` defines the setup screen before the control room.
 - `one-click-agent-runtime/README.md` defines how the visible `Graduate To Aiven` action becomes a bounded agent-orchestrated run.
-- `anthropic-agent-sdk-reasoner/README.md` defines how Anthropic Agent SDK is used as a bounded text-only report agent.
+- `anthropic-agent-sdk-reasoner/README.md` defines how Anthropic Agent SDK is used as a bounded Aiven MCP report agent.
 
 First code target:
 

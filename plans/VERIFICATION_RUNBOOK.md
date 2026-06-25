@@ -87,7 +87,7 @@ Fallback:
 
 Pass:
 
-- MCP config is present and direct Aiven fallback is labeled, or a real MCP action succeeds;
+- Agent SDK Aiven MCP config is present, and any direct Aiven fallback receipt is labeled;
 - Postgres receipt write/read succeeds;
 - UI shows receipt stream.
 
@@ -231,7 +231,7 @@ Auth, Storage, and RLS review are explicitly listed as production blockers.
 - Is this a real migration? The demo performs live Aiven Postgres writes, reads, validation, and scoped adapter cutover. Source-data copying is representative/seeded for the hackathon path, and production migration mechanics are explicit next work.
 - Did you replace Supabase entirely? For the scoped demo runtime, yes. For production auth, storage, RLS, edge functions, and full data migration, no; those remain listed blockers.
 - Why Kafka if browser realtime uses Postgres polling? Kafka is the workflow-event and production event-path proof. Browser-critical demo realtime is Aiven Postgres `app_events` through `/api/events/recent`.
-- Are you using Aiven MCP? MCP config and OAuth are verified. Runtime proof actions currently use direct Aiven fallback labels unless a live MCP tool action replaces the same receipt slot.
+- Are you using Aiven MCP? Yes. The Agent SDK receives Aiven MCP directly for control-plane context. Current data-plane proof actions may still use direct Aiven fallback, and those receipts are labeled.
 - What happens if Wi-Fi or Aiven is flaky? Use `npm run demo:fallback`; it replays the same typed event/report flow from local fixture artifacts and keeps one smaller live Aiven Postgres write/read proof if available.
 - What is the rollback? Switch the local adapter back to fixture/Supabase path and delete run-scoped Aiven demo rows or demo-prefixed rows from the disposable target.
 - What would make this production-ready? Real source extraction, run-scoped or tenant-scoped target schema, auth/storage adapters, RLS policy review, connection pooling, and full rehearsal on production-like data.

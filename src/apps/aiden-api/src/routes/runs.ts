@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
-import type { SetupProfile } from "@aiden/contracts"
+import type { CsvSourceInput, SetupProfile } from "@aiden/contracts"
 import { resetAdapterRuntime } from "../state/adapterRuntime.js"
 import { applySetupRuntimeConfig } from "../state/setupConfig.js"
 import {
@@ -29,6 +29,7 @@ type CreateRunBody = {
   sourceTables?: string
   sourceCopyLimit?: string
   sourceSslDisabled?: boolean
+  csvSources?: CsvSourceInput[]
 }
 
 type StepParams = {

@@ -55,7 +55,7 @@ Read these in order before code:
 12. [source-intake-workspace-setup/README.md](source-intake-workspace-setup/README.md) — M06C spec for source selection, source data path, workspace selection, and scope confirmation before the control room.
 13. [GENERAL_LOVABLE_TO_AIVEN_MIGRATION_SPEC.md](GENERAL_LOVABLE_TO_AIVEN_MIGRATION_SPEC.md) — product-generalization plan and implemented first slice for setup profile, generic scanner API, manifest path, and executor roadmap.
 14. [one-click-agent-runtime/README.md](one-click-agent-runtime/README.md) — M05.6 spec for turning `Graduate To Aiven` into a bounded one-click agent run.
-15. [anthropic-agent-sdk-reasoner/README.md](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as a text-only Report/CTO Agent.
+15. [anthropic-agent-sdk-reasoner/README.md](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as the bounded Aiven MCP Report/CTO Agent.
 16. [END_TO_END_DEMO_SETUP_CHECKLIST.md](END_TO_END_DEMO_SETUP_CHECKLIST.md) — setup checklist for local, Aiven, fixture, fallback, and rehearsal prep.
 17. [SPEC_STACK.md](SPEC_STACK.md) — map of which specs exist and what each owns.
 
@@ -64,7 +64,7 @@ Read these in order before code:
 | # | Mission | Status | T | A | Notes |
 | --- | --- | --- | ---: | ---: | --- |
 | 00 | Fixture-backed demo shell | BUILT | 14 | 95 | Full `Graduate To Aiven` story visible immediately, driven by `RunEvent[]` fixtures |
-| 01 | Aiven proof spine | LIVE PG VERIFIED / DIRECT FALLBACK | 15 | 90 | Live Postgres receipts/readback pass; API proof actions are direct Aiven fallback unless a real MCP action is added |
+| 01 | Aiven proof spine | LIVE PG VERIFIED / DIRECT FALLBACK | 15 | 90 | Live Postgres receipts/readback pass; Agent SDK owns Aiven MCP context and direct fallback remains labeled for data-plane actions |
 | 02 | PulseWall scanner + behavior graph | BUILT | 12 | 75 | Replace fixture behavior map with deterministic scanner over real files and migrations |
 | 03 | Aiven Postgres data migration | LIVE PG VERIFIED | 18 | 85 | Live Aiven Postgres row counts pass through `npm run verify:live` |
 | 04 | Kafka agent bus proof | BUILT / OPTIONAL LIVE CREDS PENDING | 16 | 90 | Dedicated Kafka bus endpoint/panel exists; live Aiven Kafka env is optional and warning-only until configured |
@@ -72,7 +72,7 @@ Read these in order before code:
 | 05.5 | Live Aiven verification gate | LIVE PG PASSED / KAFKA ENV PENDING | 10 | 95 | `npm run verify:live` passes the Postgres runtime path; Kafka is warning-only until configured |
 | 06A | Access broker permission UX | LIVE PG VERIFIED | 10 | 90 | Access Broker panel, preflight route, button gating, Kafka warning, and production not-requested states are implemented |
 | 05.6 | One-click agent runtime | LIVE PG VERIFIED | 12 | 90 | `Graduate To Aiven` runs the bounded workflow end to end; Anthropic SDK is report-only and Kafka warning-only |
-| 05.7 | Anthropic Agent SDK reasoner | LIVE VERIFIED | 6 | 90 | Agent SDK powers the text-only Report/CTO Agent with deterministic fallback |
+| 05.7 | Anthropic Agent SDK reasoner | LIVE VERIFIED | 6 | 90 | Agent SDK receives Aiven MCP directly, uses allowlisted tools, and falls back deterministically |
 | 06 | Control room UI hardening + final report | BUILT / LIVE PG VERIFIED | 12 | 85 | Final report memo, timeline status states, realtime/Kafka proof clarity, validation pending states |
 | 06B | Aiven workspace bootstrap framing | BUILT / LIVE PG VERIFIED | 4 | 95 | Setup is framed as connect/create Aiven workspace; demo uses Henri's pre-connected workspace without committing secrets |
 | 06C | Source intake and workspace setup | BUILT / LIVE PG VERIFIED | 5 | 95 | `/setup` is the default entry surface and shows PulseWall/Henri workspace as selected demo profile choices, not hidden hardcoding |

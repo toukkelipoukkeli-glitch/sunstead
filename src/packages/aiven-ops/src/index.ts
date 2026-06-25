@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type {
   AivenReceipt,
   AgentName,
+  CsvSourceInput,
   DataMigrationResult,
   KafkaAgentBusResult,
   Post,
@@ -61,6 +62,56 @@ const readEnv = (name: string) => {
   const value = process.env[name]?.trim()
   return value && value.length > 0 ? value : undefined
 }
+
+const maxCsvSources = 8
+const maxCsvBytes = 2_000_000
+let configuredCsvSources: CsvSourceInput[] = []
+
+const cleanCsvName = (value: unknown, fallback: string) => {
+  if (typeof value !== "string") return fallback
+  const trimmed = value.trim().slice(0, 180)
+  return trimmed || fallback
+}
+
+const cleanCsvTableName = (value: unknown) => {
+  if (typeof value !== "string") throw new Error("CSV source table name is required.")
+  const trimmed = value.trim()
+  if (!/^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*)?$/.test(trimmed)) {
+    throw new Error(`Invalid CSV table name: ${trimmed || "(empty)"}`)
+  }
+  return trimmed
+}
+
+export const configureCsvSources = (sources: CsvSourceInput[] = []) => {
+  if (!Array.isArray(sources)) {
+    throw new Error("CSV sources must be an array.")
+  }
+  if (sources.length > maxCsvSources) {
+    throw new Error(`CSV import accepts at most ${maxCsvSources} files at once.`)
+  }
+
+  configuredCsvSources = sources.map((source, index) => {
+    const csvText = typeof source.csvText === "string" ? source.csvText : ""
+    if (!csvText.trim()) {
+      throw new Error(`CSV source ${index + 1} is empty.`)
+    }
+    if (Buffer.byteLength(csvText, "utf8") > maxCsvBytes) {
+      throw new Error(`CSV source ${source.fileName || index + 1} is larger than ${maxCsvBytes} bytes.`)
+    }
+    return {
+      fileName: cleanCsvName(source.fileName, `source-${index + 1}.csv`),
+      tableName: cleanCsvTableName(source.tableName),
+      csvText
+    }
+  })
+}
+
+export const getConfiguredCsvSourceSummary = () => ({
+  configured: configuredCsvSources.length > 0,
+  fileCount: configuredCsvSources.length,
+  tables: configuredCsvSources.map((source) => source.tableName),
+  bytes: configuredCsvSources.reduce((total, source) => total + Buffer.byteLength(source.csvText, "utf8"), 0)
+})
 
 const missing = (names: string[]) => names.filter((name) => !readEnv(name))
 
@@ -1397,9 +1448,87 @@ const sourceTableAllowlist = (): SourceTableRef[] => {
     })
 }
 
+const sourceTableRefFromLabel = (label: string): SourceTableRef => {
+  if (!/^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*)?$/.test(label)) {
+    throw new Error(`Invalid source table reference: ${label}`)
+  }
+  const [maybeSchema, maybeTable] = label.split(".")
+  const schema = maybeTable ? maybeSchema : "public"
+  const table = maybeTable ?? maybeSchema
+  return { schema, table, label: `${schema}.${table}` }
+}
+
 const quoteIdent = (value: string) => `"${value.replaceAll('"', '""')}"`
 const qualifiedTable = (tableRef: SourceTableRef) => `${quoteIdent(tableRef.schema)}.${quoteIdent(tableRef.table)}`
 const safeIdPart = (value: string) => value.replace(/[^\w]+/g, "_").slice(0, 48) || "table"
+
+const parseCsvRecords = (csvText: string) => {
+  const rows: string[][] = []
+  let row: string[] = []
+  let field = ""
+  let inQuotes = false
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index]
+    const next = csvText[index + 1]
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        field += '"'
+        index += 1
+      } else if (char === '"') {
+        inQuotes = false
+      } else {
+        field += char
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = true
+    } else if (char === ",") {
+      row.push(field)
+      field = ""
+    } else if (char === "\n") {
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ""
+    } else if (char !== "\r") {
+      field += char
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error("CSV contains an unterminated quoted field.")
+  }
+  row.push(field)
+  rows.push(row)
+
+  while (rows.length > 0 && rows[rows.length - 1].every((value) => value.trim() === "")) {
+    rows.pop()
+  }
+  if (rows.length === 0) {
+    throw new Error("CSV contains no rows.")
+  }
+
+  const headers = rows[0].map((header, index) => {
+    const normalized = header.replace(/^\uFEFF/, "").trim()
+    if (!normalized) throw new Error(`CSV header ${index + 1} is empty.`)
+    return normalized
+  })
+  const duplicate = headers.find((header, index) => headers.indexOf(header) !== index)
+  if (duplicate) {
+    throw new Error(`CSV header is duplicated: ${duplicate}`)
+  }
+
+  return {
+    headers,
+    rows: rows.slice(1).map((values) =>
+      Object.fromEntries(headers.map((header, index) => [header, values[index] ?? null])) as Record<string, string | null>
+    )
+  }
+}
 
 const ensureGenericShadowTables = async (client: InstanceType<typeof Client>) => {
   await client.query(`
@@ -1449,6 +1578,394 @@ const readSourceTableColumns = async (sourceClient: InstanceType<typeof Client>,
     [tableRef.schema, tableRef.table]
   )
   return result.rows
+}
+
+const runCsvSourceDataMigration = async (
+  runId: string,
+  setupProfile: SetupProfile | undefined
+): Promise<DataMigrationResult> => {
+  const acc: DataMigrationAccumulator = {
+    runId,
+    missingEnv: new Set<string>(),
+    events: [],
+    receipts: [],
+    checks: [],
+    rowValidations: []
+  }
+
+  const required = missing(["AIVEN_POSTGRES_URL"])
+  if (configuredCsvSources.length === 0) required.push("CSV_SOURCE_FILES")
+
+  if (required.length > 0) {
+    for (const name of required) acc.missingEnv.add(name)
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "skipped",
+      source: "cached",
+      summary: `CSV export import skipped; missing ${required.join(", ")}.`,
+      details: { missingEnv: required, sourceDataPath: setupProfile?.sourceDataPath }
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "skipped",
+      source: "cached",
+      summary: `CSV export row validation skipped; missing ${required.join(", ")}.`,
+      details: { missingEnv: required }
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_csv_source_copy_cached",
+      agent: "migration_operator",
+      intent: "copy CSV export tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: "cached",
+      source: "cached",
+      details: { missingEnv: required }
+    })
+    addCheck(acc, {
+      idPrefix: "check_csv_source_copy_cached",
+      checkName: "csv_source_table_copy",
+      status: "skipped",
+      source: "cached",
+      details: { missingEnv: required }
+    })
+    return {
+      source: "cached",
+      ok: false,
+      missingEnv: [...acc.missingEnv],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  }
+
+  let parsedSources: Array<{
+    source: CsvSourceInput
+    tableRef: SourceTableRef
+    headers: string[]
+    rows: Record<string, string | null>[]
+  }>
+  try {
+    parsedSources = configuredCsvSources.map((source) => {
+      const parsed = parseCsvRecords(source.csvText)
+      return {
+        source,
+        tableRef: sourceTableRefFromLabel(source.tableName),
+        headers: parsed.headers,
+        rows: parsed.rows
+      }
+    })
+  } catch (error) {
+    const message = safeError(error)
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "failed",
+      source: "cached",
+      summary: `CSV export import failed before Aiven write: ${message}`
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "failed",
+      source: "cached",
+      summary: `CSV export row validation failed before Aiven write: ${message}`
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_csv_source_parse_failed",
+      agent: "migration_operator",
+      intent: "parse CSV export tables before Aiven shadow copy",
+      tool: "csv_parse",
+      target: "csv_export",
+      risk: "read_only",
+      result: "failed",
+      source: "cached",
+      details: { error: message }
+    })
+    addCheck(acc, {
+      idPrefix: "check_csv_source_parse_failed",
+      checkName: "csv_source_table_parse",
+      status: "failed",
+      source: "cached",
+      details: { error: message }
+    })
+    return {
+      source: "cached",
+      ok: false,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  }
+
+  const targetClient = createPgClient()
+  const copyLimit = genericCopyLimit()
+
+  try {
+    await targetClient.connect()
+    await targetClient.query("select pg_advisory_lock(hashtext($1::text))", [`${dataMigrationLockKey}:csv`])
+    await targetClient.query("begin")
+    await ensureDataMigrationTables(targetClient)
+    await ensureGenericShadowTables(targetClient)
+    await targetClient.query(
+      `
+      insert into migration_runs (run_id, demo_name, status, updated_at)
+      values ($1, $2, 'csv_source_data_copy', now())
+      on conflict (run_id) do update set status = excluded.status, updated_at = now()
+      `,
+      [runId, setupProfile?.sourceLabel ?? "csv_source"]
+    )
+    await targetClient.query("delete from source_table_rows where run_id = $1", [runId])
+    await targetClient.query("delete from source_table_profiles where run_id = $1", [runId])
+
+    const tableResults: Array<{
+      tableRef: SourceTableRef
+      fileName: string
+      sourceRowCount: number
+      copiedRowCount: number
+      columns: unknown[]
+      truncated: boolean
+    }> = []
+
+    for (const parsedSource of parsedSources) {
+      const copiedRows = parsedSource.rows.slice(0, copyLimit)
+      const columns = parsedSource.headers.map((header, index) => ({
+        column_name: header,
+        data_type: "text",
+        is_nullable: "YES",
+        ordinal_position: index + 1
+      }))
+
+      for (const [index, row] of copiedRows.entries()) {
+        await targetClient.query(
+          `
+          insert into source_table_rows (run_id, source_schema, source_table, row_index, row_data)
+          values ($1, $2, $3, $4, $5::jsonb)
+          `,
+          [
+            runId,
+            parsedSource.tableRef.schema,
+            parsedSource.tableRef.table,
+            index + 1,
+            JSON.stringify(row)
+          ]
+        )
+      }
+
+      await targetClient.query(
+        `
+        insert into source_table_profiles (
+          run_id, source_label, source_schema, source_table, source_row_count,
+          copied_row_count, copy_limit, columns
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        `,
+        [
+          runId,
+          setupProfile?.sourceLabel ?? parsedSource.source.fileName,
+          parsedSource.tableRef.schema,
+          parsedSource.tableRef.table,
+          parsedSource.rows.length,
+          copiedRows.length,
+          copyLimit,
+          JSON.stringify(columns)
+        ]
+      )
+
+      tableResults.push({
+        tableRef: parsedSource.tableRef,
+        fileName: parsedSource.source.fileName,
+        sourceRowCount: parsedSource.rows.length,
+        copiedRowCount: copiedRows.length,
+        columns,
+        truncated: parsedSource.rows.length > copyLimit
+      })
+    }
+
+    for (const result of tableResults) {
+      const status = result.truncated || result.copiedRowCount !== result.sourceRowCount ? "failed" : "passed"
+      addRowValidation(acc, {
+        table: result.tableRef.label,
+        expected: result.sourceRowCount,
+        actual: result.copiedRowCount,
+        status,
+        source: "live"
+      })
+      addCheck(acc, {
+        idPrefix: `check_csv_${safeIdPart(result.tableRef.label)}`,
+        checkName: `csv_source_copy_${result.tableRef.schema}_${result.tableRef.table}`,
+        status,
+        source: "live",
+        details: {
+          sourceTable: result.tableRef.label,
+          fileName: result.fileName,
+          sourceRowCount: result.sourceRowCount,
+          copiedRowCount: result.copiedRowCount,
+          copyLimit,
+          truncated: result.truncated,
+          columnCount: result.columns.length
+        }
+      })
+    }
+
+    const allPassed = acc.rowValidations.length > 0 && acc.rowValidations.every((validation) => validation.status === "passed")
+    await insertMigrationReceipt(targetClient, {
+      runId,
+      agent: "migration_operator",
+      intent: "copy CSV export tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: allPassed ? "ok" : "failed",
+      rollback: "delete from source_table_rows/source_table_profiles where run_id matches this run",
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        files: tableResults.map((result) => result.fileName),
+        tables: tableResults.map((result) => result.tableRef.label),
+        copyLimit
+      }
+    })
+    await targetClient.query("commit")
+
+    addReceipt(acc, {
+      idPrefix: "receipt_csv_source_copy_live",
+      agent: "migration_operator",
+      intent: "copy CSV export tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: allPassed ? "ok" : "failed",
+      rollback: "delete run-scoped source_table_rows and source_table_profiles rows",
+      source: "live",
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        fileCount: tableResults.length,
+        copyLimit
+      }
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_csv_source_validate_live",
+      agent: "validation_auditor",
+      intent: "validate CSV export row counts",
+      tool: "aiven_pg_read",
+      target: "source_table_profiles",
+      risk: "read_only",
+      result: allPassed ? "ok" : "failed",
+      source: "live",
+      details: {
+        tables: tableResults.map((result) => ({
+          table: result.tableRef.label,
+          fileName: result.fileName,
+          expected: result.sourceRowCount,
+          actual: result.copiedRowCount,
+          truncated: result.truncated
+        }))
+      }
+    })
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: allPassed ? "ok" : "failed",
+      source: "live",
+      summary: allPassed
+        ? `Imported ${tableResults.length} CSV export table(s) into Aiven shadow rows.`
+        : "CSV export import ran, but at least one table exceeded the copy limit.",
+      details: {
+        sourceLabel: setupProfile?.sourceLabel,
+        tables: tableResults.map((result) => result.tableRef.label),
+        copyLimit
+      }
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: allPassed ? "ok" : "failed",
+      source: "live",
+      summary: allPassed
+        ? "Aiven shadow row counts match the uploaded CSV export rows."
+        : "Aiven shadow row-count validation failed for one or more CSV export tables.",
+      details: {
+        tables: tableResults.map((result) => ({
+          table: result.tableRef.label,
+          fileName: result.fileName,
+          sourceRowCount: result.sourceRowCount,
+          copiedRowCount: result.copiedRowCount,
+          truncated: result.truncated
+        }))
+      }
+    })
+
+    return {
+      source: "live",
+      ok: allPassed,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  } catch (error) {
+    await targetClient.query("rollback").catch(() => undefined)
+    const message = safeError(error)
+    addEvent(acc, {
+      type: "migration.schema.applied",
+      agent: "migration_operator",
+      state: "migration_running",
+      status: "failed",
+      source: "live",
+      summary: `CSV export import failed: ${message}`
+    })
+    addEvent(acc, {
+      type: "migration.rows.validated",
+      agent: "validation_auditor",
+      state: "migration_validated",
+      status: "failed",
+      source: "live",
+      summary: `CSV export row validation failed: ${message}`
+    })
+    addReceipt(acc, {
+      idPrefix: "receipt_csv_source_copy_failed",
+      agent: "migration_operator",
+      intent: "copy CSV export tables into Aiven shadow rows",
+      tool: "aiven_pg_write",
+      target: "source_table_rows",
+      risk: "safe_write",
+      result: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    addCheck(acc, {
+      idPrefix: "check_csv_source_copy_failed",
+      checkName: "csv_source_table_copy",
+      status: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    return {
+      source: sourceFrom(acc),
+      ok: false,
+      missingEnv: [],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks,
+      rowValidations: acc.rowValidations
+    }
+  } finally {
+    await targetClient.query("select pg_advisory_unlock(hashtext($1::text))", [`${dataMigrationLockKey}:csv`]).catch(() => undefined)
+    await targetClient.end().catch(() => undefined)
+  }
 }
 
 const runGenericSourceDataMigration = async (
@@ -1844,6 +2361,10 @@ export const runAivenDataMigration = async (
       checks: acc.checks,
       rowValidations: acc.rowValidations
     }
+  }
+
+  if (options.setupProfile?.sourceDataPath === "csv_export") {
+    return runCsvSourceDataMigration(runId, options.setupProfile)
   }
 
   if (options.setupProfile && options.setupProfile.sourceDataPath !== "seeded_demo_data") {

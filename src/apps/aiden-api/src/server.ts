@@ -12,7 +12,8 @@ const appDir = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(appDir, "../../../../.env.local"), quiet: true })
 
 const app = Fastify({
-  logger: true
+  logger: true,
+  bodyLimit: 10 * 1024 * 1024
 })
 
 await app.register(cors, {

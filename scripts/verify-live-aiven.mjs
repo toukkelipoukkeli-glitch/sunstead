@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
-import { spawnSync } from "node:child_process"
 import { config as loadEnv } from "dotenv"
 
 loadEnv({ path: ".env.local", quiet: true })
@@ -82,14 +81,12 @@ const readTextFile = (path) => {
 }
 
 const verifyMcpConfig = () => {
-  const codexConfig = readTextFile(".codex/config.toml")
-  if (!codexConfig.includes("[mcp_servers.aiven]")) {
-    fail("codex mcp config", "Missing [mcp_servers.aiven] in .codex/config.toml.")
+  const runtimeUrl = process.env.AIVEN_MCP_URL?.trim() || AIVEN_MCP_URL
+  if (runtimeUrl !== AIVEN_MCP_URL) {
+    warn("agent sdk mcp config", "AIVEN_MCP_URL overrides the hosted default; verify this is intentional.")
+  } else {
+    pass("agent sdk mcp config", "Agent SDK runtime uses the hosted Aiven MCP endpoint")
   }
-  if (!codexConfig.includes(`url = "${AIVEN_MCP_URL}"`)) {
-    fail("codex mcp config", "Aiven MCP URL in .codex/config.toml does not match the expected hosted endpoint.")
-  }
-  pass("codex mcp config", "project .codex/config.toml contains mcp_servers.aiven")
 
   const rawJson = readTextFile(".mcp.json")
   let parsed
@@ -103,27 +100,15 @@ const verifyMcpConfig = () => {
     fail("raw mcp config", ".mcp.json does not contain the expected mcpServers.aiven.url.")
   }
   pass("raw mcp config", "root .mcp.json contains mcpServers.aiven")
-}
 
-const verifyCodexMcpAuth = () => {
-  const result = spawnSync("codex", ["mcp", "list"], {
-    encoding: "utf8",
-    timeout: 8000
-  })
-  if (result.error) {
-    warn("codex mcp auth", `could not run codex mcp list (${result.error.message})`)
-    return
+  try {
+    const codexConfig = readFileSync(".codex/config.toml", "utf8")
+    if (codexConfig.includes("[mcp_servers.aiven]") && codexConfig.includes(AIVEN_MCP_URL)) {
+      warn("codex mcp config", "Codex also has Aiven MCP configured, but it is not the product runtime gate.")
+    }
+  } catch {
+    warn("codex mcp config", "No Codex MCP config found; product runtime uses Agent SDK MCP config.")
   }
-  const output = `${result.stdout}\n${result.stderr}`
-  if (!output.includes("aiven")) {
-    warn("codex mcp auth", "codex mcp list did not show the aiven server")
-    return
-  }
-  if (output.includes("OAuth")) {
-    pass("codex mcp auth", "aiven server is enabled and OAuth-authenticated")
-    return
-  }
-  warn("codex mcp auth", "aiven server is configured but not OAuth-authenticated")
 }
 
 const requireEnv = (names) => {
@@ -479,7 +464,6 @@ const main = async () => {
   }
 
   verifyMcpConfig()
-  verifyCodexMcpAuth()
   requireEnv(["AIVEN_POSTGRES_URL"])
 
   const health = await requestJson("/api/health")

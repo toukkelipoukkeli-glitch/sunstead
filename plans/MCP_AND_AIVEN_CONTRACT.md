@@ -13,7 +13,10 @@ include the required live Aiven Postgres proof actions below, or clearly label c
 
 Current implementation truth:
 
-- the repo contains the hosted Aiven MCP configuration and the verifier checks that it is present;
+- the Agent SDK runtime receives the hosted Aiven MCP server directly through its `mcpServers`
+  option;
+- `.mcp.json` remains as the raw descriptor for other MCP clients;
+- `.codex/config.toml` may exist for developer tooling, but it is not the product runtime gate;
 - the local API runtime currently executes live Aiven proof through direct Aiven REST/Postgres/Kafka
   fallback code;
 - receipt rows from that path are labeled `direct_aiven_fallback`;
@@ -22,7 +25,21 @@ Current implementation truth:
 
 ## MCP Server Configuration
 
-Use the hosted Aiven MCP server from the project-scoped Codex config:
+Use the hosted Aiven MCP server from the Agent SDK query options:
+
+```ts
+mcpServers: {
+  aiven: {
+    type: "http",
+    url: process.env.AIVEN_MCP_URL ?? "https://mcp.aiven.live/mcp?allow_secrets=true"
+  }
+}
+```
+
+The runtime also sets `strictMcpConfig: true`, keeps local shell/file/web tools disabled, and allows
+only explicitly approved `mcp__aiven__...` tool names.
+
+The project may still keep a Codex MCP config for local developer inspection:
 
 ```toml
 [mcp_servers.aiven]
@@ -51,8 +68,9 @@ Keep the raw MCP server descriptor at the repo root too, for tools that expect J
 }
 ```
 
-This is the primary configured MCP path. The current API runtime still uses direct Aiven fallback for
-live proof actions until a real MCP action is added to the local worker.
+The Agent SDK config is the primary product path. The current API runtime still uses direct Aiven
+fallback for live data-plane proof actions until real MCP write/read actions are added to the local
+worker.
 
 Security rule:
 

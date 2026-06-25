@@ -1,4 +1,4 @@
-import type { SetupProfile } from "@aiden/contracts"
+import type { CsvSourceInput, SetupProfile } from "@aiden/contracts"
 import {
   ArrowRight,
   CheckCircle2,
@@ -7,12 +7,12 @@ import {
   FileArchive,
   Github,
   LockKeyhole,
-  RefreshCw,
   ShieldCheck
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import {
+  completeGitHubManifest,
   getGitHubInstallUrl,
   importGitHubSource,
   listGitHubRepositories,
@@ -54,9 +54,9 @@ const dataOptions: SetupOption[] = [
   },
   {
     title: "CSV / Lovable Cloud export",
-    eyebrow: "Coming soon",
-    copy: "For Lovable-managed backends, Aiden recreates schema from exportable artifacts.",
-    state: "coming_soon",
+    eyebrow: "Available",
+    copy: "For Lovable-managed backends, Aiden imports exported tables into Aiven shadow rows.",
+    state: "available",
     icon: CloudUpload
   }
 ]
@@ -108,8 +108,12 @@ const SetupCard = ({ option }: { option: SetupOption }) => {
   )
 }
 
-type SetupMode = "managed" | "source_db" | "github"
-type GitHubBusyState = "install" | "repos" | "import"
+type SetupMode = "managed" | "source_db" | "github" | "csv"
+type GitHubBusyState = "install" | "manifest" | "repos" | "import"
+type CsvSourceDraft = CsvSourceInput & {
+  bytes: number
+  rowEstimate: number
+}
 
 const parseInstallationId = (value: string) => {
   const parsed = Number(value)
@@ -122,6 +126,18 @@ const formatBytes = (value: number) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const tableNameFromFileName = (fileName: string) => {
+  const baseName = fileName.replace(/\.[^.]+$/, "").replace(/^\uFEFF/, "")
+  const safeName = baseName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return `public.${safeName || "uploaded_table"}`
+}
+
+const estimateCsvRows = (text: string) => Math.max(0, text.split(/\r?\n/).filter((line) => line.trim()).length - 1)
+
 export const SetupPage = () => {
   const [mode, setMode] = useState<SetupMode>("managed")
   const [sourceLabel, setSourceLabel] = useState("Owned Supabase project")
@@ -130,29 +146,70 @@ export const SetupPage = () => {
   const [sourceTables, setSourceTables] = useState("posts")
   const [sourceCopyLimit, setSourceCopyLimit] = useState("1000")
   const [sourceSslDisabled, setSourceSslDisabled] = useState(false)
+  const [csvSources, setCsvSources] = useState<CsvSourceDraft[]>([])
+  const [csvImportSummary, setCsvImportSummary] = useState<string | null>(null)
   const [workspaceLabel, setWorkspaceLabel] = useState("Henri pre-connected workspace")
   const [githubInstallUrl, setGithubInstallUrl] = useState<string | null>(null)
   const [githubInstallationId, setGithubInstallationId] = useState("")
   const [githubRepos, setGithubRepos] = useState<GitHubRepositorySummary[]>([])
-  const [selectedGithubRepoId, setSelectedGithubRepoId] = useState("")
-  const [githubRef, setGithubRef] = useState("")
   const [githubProfile, setGithubProfile] = useState<SetupProfile | null>(null)
   const [githubImportSummary, setGithubImportSummary] = useState<string | null>(null)
+  const [githubConnectionStatus, setGithubConnectionStatus] = useState<{
+    tone: "warning" | "success"
+    message: string
+  } | null>(null)
   const [githubBusy, setGithubBusy] = useState<GitHubBusyState | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const installationId = new URLSearchParams(window.location.search).get("installation_id")
-    if (!installationId) return
-    setMode("github")
-    setGithubInstallationId(installationId)
-  }, [])
+    const params = new URLSearchParams(window.location.search)
+    const installationId = params.get("installation_id")
+    const manifestCode = params.get("code")
+    const manifestState = params.get("state") ?? undefined
+    const setupUrl = `${window.location.origin}/setup/github/callback`
+    if (manifestCode) {
+      setMode("github")
+      setGithubBusy("manifest")
+      setGithubConnectionStatus({
+        tone: "success",
+        message: "GitHub created the local Aiden connector. Saving it and opening repository installation."
+      })
+      completeGitHubManifest({ code: manifestCode, state: manifestState, setupUrl })
+        .then((response) => {
+          if (response.installUrl) {
+            setGithubInstallUrl(response.installUrl)
+            window.location.assign(response.installUrl)
+            return
+          }
+          setGithubConnectionStatus({
+            tone: "success",
+            message: "GitHub connector saved. Click Connect GitHub again to install it on a repository."
+          })
+          window.history.replaceState({}, "", "/setup")
+        })
+        .catch((manifestError) => {
+          setError(manifestError instanceof Error ? manifestError.message : "GitHub connector setup failed.")
+          setGithubConnectionStatus({
+            tone: "warning",
+            message: manifestError instanceof Error ? manifestError.message : "GitHub connector setup failed."
+          })
+        })
+        .finally(() => setGithubBusy(null))
+      return
+    }
 
-  const selectedGithubRepo = useMemo(
-    () => githubRepos.find((repository) => String(repository.id) === selectedGithubRepoId),
-    [githubRepos, selectedGithubRepoId]
-  )
+    if (installationId) {
+      setMode("github")
+      setGithubInstallationId(installationId)
+      setGithubConnectionStatus({
+        tone: "success",
+        message: "GitHub connected. Importing the selected repository."
+      })
+      window.history.replaceState({}, "", "/setup")
+      void loadGithubReposForInstallation(installationId)
+    }
+  }, [])
 
   const sourceOptions = useMemo<SetupOption[]>(
     () => [
@@ -187,53 +244,91 @@ export const SetupPage = () => {
     () => {
       if (mode === "managed") return managedSetupProfile
       if (mode === "github" && githubProfile) return githubProfile
+      if (mode === "csv") {
+        return productSetupProfile({
+          sourceLabel: sourceLabel.trim() || "Lovable CSV export",
+          workspaceLabel: workspaceLabel.trim() || "Henri pre-connected workspace",
+          sourceKind: "lovable_cloud_export",
+          sourceDataPath: "csv_export",
+          detectedBehaviors: ["CSV table export", "schema headers", "row import", "adapter required"]
+        })
+      }
       return productSetupProfile({
-        sourceLabel: sourceLabel.trim() || selectedGithubRepo?.fullName || "Owned Supabase project",
+        sourceLabel: sourceLabel.trim() || githubRepos[0]?.fullName || "Owned Supabase project",
         sourceRoot: sourceRoot.trim() || undefined,
         workspaceLabel: workspaceLabel.trim() || "Henri pre-connected workspace"
       })
     },
-    [githubProfile, mode, selectedGithubRepo?.fullName, sourceLabel, sourceRoot, workspaceLabel]
+    [githubProfile, githubRepos, mode, sourceLabel, sourceRoot, workspaceLabel]
   )
 
   const behaviorTags = selectedProfile.detectedBehaviors.length > 0 ? selectedProfile.detectedBehaviors : ["scan pending"]
 
   const connectGithub = async () => {
     setError(null)
+    setGithubConnectionStatus(null)
     setGithubBusy("install")
     try {
       const response = await getGitHubInstallUrl()
       if (!response.configured || !response.url) {
-        setError(`GitHub App setup is missing: ${response.missingEnv.join(", ") || "GitHub App env"}.`)
+        const recommendedSetupUrl = `${window.location.origin}/setup/github/callback`
+        const bootstrapUrl = `/api/github/manifest/start?setupUrl=${encodeURIComponent(
+          response.setupUrl || recommendedSetupUrl
+        )}`
+        setGithubConnectionStatus({
+          tone: "success",
+          message: "Opening GitHub to create the local Aiden connector, then you can install it on selected repos."
+        })
+        window.location.assign(bootstrapUrl)
         return
       }
+      setGithubConnectionStatus({
+        tone: "success",
+        message: response.setupUrl
+          ? `Opening GitHub. After installation, GitHub should return to ${response.setupUrl}.`
+          : "Opening GitHub. If GitHub does not return automatically, copy the installation id from the GitHub URL."
+      })
       setGithubInstallUrl(response.url)
       window.location.assign(response.url)
     } catch (connectError) {
-      setError(connectError instanceof Error ? connectError.message : "GitHub App setup failed.")
+      const message = connectError instanceof Error ? connectError.message : "GitHub App setup failed."
+      setGithubConnectionStatus({ tone: "warning", message })
+      setError(message)
     } finally {
       setGithubBusy(null)
     }
   }
 
-  const loadGithubRepos = async () => {
+  async function loadGithubReposForInstallation(installationIdValue: string, autoImportSingle = true) {
     setError(null)
     setGithubBusy("repos")
     setGithubProfile(null)
     setGithubImportSummary(null)
+    setGithubConnectionStatus(null)
     try {
-      const installationId = parseInstallationId(githubInstallationId)
+      const installationId = parseInstallationId(installationIdValue)
       if (!installationId) {
-        setError("Enter the GitHub installation id from the App callback URL.")
+        setError("GitHub did not return a valid installation id.")
         return
       }
       const response = await listGitHubRepositories(installationId)
       setGithubRepos(response.repositories)
-      setSelectedGithubRepoId(response.repositories[0] ? String(response.repositories[0].id) : "")
-      setGithubRef(response.repositories[0]?.defaultBranch ?? "")
       if (response.repositories.length === 0) {
         setError("This GitHub installation has no repositories available to Aiden.")
+        setGithubConnectionStatus({
+          tone: "warning",
+          message: "GitHub connected, but no repositories were granted to Aiden."
+        })
+        return
       }
+      if (response.repositories.length === 1 && autoImportSingle) {
+        await importGithubRepo(response.repositories[0], installationIdValue)
+        return
+      }
+      setGithubConnectionStatus({
+        tone: "success",
+        message: `GitHub granted ${response.repositories.length} repositories. Choose the source app to import.`
+      })
     } catch (repoError) {
       setError(repoError instanceof Error ? repoError.message : "GitHub repository lookup failed.")
     } finally {
@@ -241,25 +336,22 @@ export const SetupPage = () => {
     }
   }
 
-  const importSelectedGithubRepo = async () => {
+  async function importGithubRepo(repository: GitHubRepositorySummary, installationIdValue = githubInstallationId) {
     setError(null)
     setGithubBusy("import")
+    setGithubConnectionStatus(null)
     try {
-      const installationId = parseInstallationId(githubInstallationId)
+      const installationId = parseInstallationId(installationIdValue)
       if (!installationId) {
-        setError("Enter the GitHub installation id before importing.")
-        return
-      }
-      if (!selectedGithubRepo) {
-        setError("Select a GitHub repository to import.")
+        setError("GitHub did not return a valid installation id.")
         return
       }
       const response = await importGitHubSource({
         installationId,
-        repositoryId: selectedGithubRepo.id,
-        owner: selectedGithubRepo.owner,
-        repo: selectedGithubRepo.repo,
-        ref: githubRef.trim() || selectedGithubRepo.defaultBranch
+        repositoryId: repository.id,
+        owner: repository.owner,
+        repo: repository.repo,
+        ref: repository.defaultBranch
       })
       setGithubProfile(response.setupProfile)
       setGithubImportSummary(
@@ -267,11 +359,60 @@ export const SetupPage = () => {
           response.bytesWritten
         )}) into ${response.sourceRoot}.`
       )
+      setGithubConnectionStatus({
+        tone: "success",
+        message: `${response.setupProfile.sourceLabel} is ready for behavior scanning.`
+      })
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "GitHub source import failed.")
     } finally {
       setGithubBusy(null)
     }
+  }
+
+  const importCsvFiles = async (files: FileList | null) => {
+    setError(null)
+    setCsvImportSummary(null)
+    if (!files || files.length === 0) return
+    const csvFiles = [...files].filter((file) => file.name.toLowerCase().endsWith(".csv"))
+    if (csvFiles.length === 0) {
+      setError("Select one or more .csv files.")
+      return
+    }
+    if (csvFiles.length > 8) {
+      setError("CSV import accepts at most 8 files at once.")
+      return
+    }
+
+    try {
+      const nextSources = await Promise.all(
+        csvFiles.map(async (file) => {
+          const csvText = await file.text()
+          return {
+            fileName: file.name,
+            tableName: tableNameFromFileName(file.name),
+            csvText,
+            bytes: file.size,
+            rowEstimate: estimateCsvRows(csvText)
+          }
+        })
+      )
+      setCsvSources(nextSources)
+      setSourceLabel(sourceLabel.trim() && sourceLabel !== "Owned Supabase project" ? sourceLabel : "Lovable CSV export")
+      setCsvImportSummary(
+        `${nextSources.length} CSV file(s) staged: ${nextSources
+          .map((source) => `${source.tableName} ${source.rowEstimate} rows`)
+          .join(", ")}.`
+      )
+    } catch (csvError) {
+      setError(csvError instanceof Error ? csvError.message : "CSV file import failed.")
+    }
+  }
+
+  const updateCsvTableName = (index: number, tableName: string) => {
+    setCsvSources((sources) =>
+      sources.map((source, sourceIndex) => (sourceIndex === index ? { ...source, tableName } : source))
+    )
   }
 
   const continueToControl = async () => {
@@ -287,6 +428,11 @@ export const SetupPage = () => {
       setIsSubmitting(false)
       return
     }
+    if (mode === "csv" && csvSources.length === 0) {
+      setError("CSV export mode needs at least one .csv file.")
+      setIsSubmitting(false)
+      return
+    }
 
     const config: SetupRuntimeConfig =
       mode === "source_db"
@@ -297,7 +443,13 @@ export const SetupPage = () => {
             sourceCopyLimit,
             sourceSslDisabled
           }
-        : { setupProfile: selectedProfile }
+        : mode === "csv"
+          ? {
+              setupProfile: selectedProfile,
+              csvSources: csvSources.map(({ fileName, tableName, csvText }) => ({ fileName, tableName, csvText })),
+              sourceCopyLimit
+            }
+          : { setupProfile: selectedProfile }
 
     try {
       await submitSetupProfile(config)
@@ -361,6 +513,14 @@ export const SetupPage = () => {
           <Database aria-hidden="true" size={16} />
           Source DB shadow copy
         </button>
+        <button
+          className={`setup-mode-button ${mode === "csv" ? "active" : ""}`}
+          type="button"
+          onClick={() => setMode("csv")}
+        >
+          <CloudUpload aria-hidden="true" size={16} />
+          CSV export import
+        </button>
       </section>
 
       <section className="setup-grid" aria-label="Migration setup selections">
@@ -404,65 +564,42 @@ export const SetupPage = () => {
           <div className="setup-inline-actions">
             <button className="primary-button" type="button" onClick={connectGithub} disabled={Boolean(githubBusy)}>
               <Github aria-hidden="true" size={16} />
-              {githubBusy === "install" ? "Opening GitHub" : "Connect GitHub"}
-            </button>
-            <button className="ghost-button" type="button" onClick={loadGithubRepos} disabled={Boolean(githubBusy)}>
-              <RefreshCw aria-hidden="true" size={16} />
-              {githubBusy === "repos" ? "Loading repos" : "Load repositories"}
-            </button>
-          </div>
-          <label>
-            <span>Installation id</span>
-            <input
-              inputMode="numeric"
-              value={githubInstallationId}
-              onChange={(event) => setGithubInstallationId(event.target.value)}
-              placeholder="12345678"
-            />
-          </label>
-          <label>
-            <span>Repository</span>
-            <select
-              value={selectedGithubRepoId}
-              onChange={(event) => {
-                const repository = githubRepos.find((candidate) => String(candidate.id) === event.target.value)
-                setSelectedGithubRepoId(event.target.value)
-                setGithubRef(repository?.defaultBranch ?? "")
-                setGithubProfile(null)
-                setGithubImportSummary(null)
-              }}
-            >
-              <option value="">Select repository</option>
-              {githubRepos.map((repository) => (
-                <option key={repository.id} value={repository.id}>
-                  {repository.fullName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Branch, tag, or SHA</span>
-            <input
-              value={githubRef}
-              onChange={(event) => {
-                setGithubRef(event.target.value)
-                setGithubProfile(null)
-                setGithubImportSummary(null)
-              }}
-              placeholder={selectedGithubRepo?.defaultBranch ?? "main"}
-            />
-          </label>
-          <div className="setup-inline-actions">
-            <button className="secondary-button" type="button" onClick={importSelectedGithubRepo} disabled={Boolean(githubBusy)}>
-              {githubBusy === "import" ? "Importing repository" : "Import selected repository"}
+              {githubBusy === "install" || githubBusy === "manifest"
+                ? "Opening GitHub"
+                : githubBusy === "repos"
+                  ? "Reading GitHub selection"
+                  : githubBusy === "import"
+                    ? "Importing repository"
+                    : "Connect GitHub"}
             </button>
             {githubInstallUrl ? (
               <a href={githubInstallUrl} target="_blank" rel="noreferrer">
-                GitHub App install URL
+                Change GitHub repo access
               </a>
             ) : null}
           </div>
           {githubImportSummary ? <p className="setup-import-summary">{githubImportSummary}</p> : null}
+          {githubConnectionStatus ? (
+            <p className={`setup-connection-status setup-connection-status-${githubConnectionStatus.tone}`}>
+              {githubConnectionStatus.message}
+            </p>
+          ) : null}
+          {githubRepos.length > 1 && !githubProfile ? (
+            <div className="github-repo-list" aria-label="GitHub repositories granted to Aiden">
+              {githubRepos.map((repository) => (
+                <button
+                  className="ghost-button"
+                  type="button"
+                  key={repository.id}
+                  onClick={() => importGithubRepo(repository)}
+                  disabled={Boolean(githubBusy)}
+                >
+                  <Github aria-hidden="true" size={15} />
+                  {repository.fullName}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <p>
             Repository access uses GitHub App contents read permission. Source rows remain a separate
             Supabase/Postgres permission and will stay blocked until a DB URL and table allowlist are configured.
@@ -523,6 +660,53 @@ export const SetupPage = () => {
         </section>
       ) : null}
 
+      {mode === "csv" ? (
+        <section className="setup-form-panel" aria-label="CSV export import configuration">
+          <div className="setup-section-heading">
+            <p className="eyebrow">04 CSV Export</p>
+            <strong>Upload exported tables into Aiven shadow rows</strong>
+          </div>
+          <label>
+            <span>Source label</span>
+            <input value={sourceLabel} onChange={(event) => setSourceLabel(event.target.value)} />
+          </label>
+          <label>
+            <span>Copy limit</span>
+            <input inputMode="numeric" value={sourceCopyLimit} onChange={(event) => setSourceCopyLimit(event.target.value)} />
+          </label>
+          <label className="setup-wide-field">
+            <span>CSV files</span>
+            <input
+              accept=".csv,text/csv"
+              multiple
+              type="file"
+              onChange={(event) => {
+                void importCsvFiles(event.currentTarget.files)
+              }}
+            />
+          </label>
+          {csvSources.length > 0 ? (
+            <div className="setup-csv-list">
+              {csvSources.map((source, index) => (
+                <label key={`${source.fileName}-${index}`}>
+                  <span>{source.fileName} · {formatBytes(source.bytes)} · {source.rowEstimate} rows</span>
+                  <input
+                    value={source.tableName}
+                    onChange={(event) => updateCsvTableName(index, event.target.value)}
+                    placeholder="public.table_name"
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {csvImportSummary ? <p className="setup-import-summary">{csvImportSummary}</p> : null}
+          <p>
+            CSV mode imports table rows and headers into Aiven shadow tables. It cannot infer Auth,
+            Storage, RLS, realtime, or adapter behavior from CSV alone.
+          </p>
+        </section>
+      ) : null}
+
       <section className="setup-bottom-grid" aria-label="Detected profile and migration scope">
         <article className="setup-panel">
           <div>
@@ -535,7 +719,7 @@ export const SetupPage = () => {
             ))}
           </div>
           <p>
-            Backend ownership path: {mode === "managed" ? "managed source profile" : mode === "github" ? "GitHub App source import" : "owned source Postgres URL"}.
+            Backend ownership path: {mode === "managed" ? "managed source profile" : mode === "github" ? "GitHub App source import" : mode === "csv" ? "uploaded CSV table export" : "owned source Postgres URL"}.
             Product source-data paths cover owned Supabase projects, Lovable Cloud exports, and CSV/data dump fallbacks.
           </p>
         </article>

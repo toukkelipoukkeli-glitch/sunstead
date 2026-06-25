@@ -12,16 +12,16 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 | Shared contracts | Complete | Contracts package typechecks. |
 | Fixture data | Complete | Full cold-open -> report story exists. |
 | Local API | Complete | Fixture run player and adapter endpoints typecheck. |
-| Aiven proof spine | Live PG verified / direct fallback | `/api/runs/:runId/proof-spine` runs project visibility when configured, Postgres receipt readback, and Kafka agent-bus proof independently. Runtime proof uses direct Aiven fallback unless a real MCP action is added. Missing env returns explicit cached/skipped proof without fixture leakage. |
-| Aiven MCP config | Complete / runtime fallback labeled | Project `.codex/config.toml` configures Codex for the hosted Aiven MCP server; root `.mcp.json` keeps the raw server descriptor. The API runtime currently labels proof actions as direct Aiven fallback, not live MCP tool calls. |
+| Aiven proof spine | Live PG verified / direct fallback | `/api/runs/:runId/proof-spine` runs project visibility when configured, Postgres receipt readback, and Kafka agent-bus proof independently. Agent SDK owns the Aiven MCP control-plane context; data-plane proof uses labeled direct fallback where MCP write/read wrappers are not yet reliable. Missing env returns explicit cached/skipped proof without fixture leakage. |
+| Aiven MCP config | Complete / Agent SDK runtime wired | Agent SDK receives the hosted Aiven MCP server directly through `mcpServers`; root `.mcp.json` keeps the raw server descriptor, and `.codex/config.toml` is developer tooling only. |
 | PulseWall scanner | M02 complete | Deterministic scanner reads `demo/pulsewall`, detects Supabase behavior, and replaces the behavior map through `/api/runs/:runId/source-scan`. |
 | Aiven Postgres data migration | M03 live PG verified | `/api/runs/:runId/data-migration` creates/loads/validates the scoped PulseWall dataset in Aiven Postgres. `npm run verify:live` passed row counts against live Aiven PG. |
 | Kafka agent bus | M04 cached/scaffold complete | `/api/runs/:runId/kafka-agent-bus` publishes the current workflow timeline to Aiven Kafka when configured, otherwise returns explicit cached/skipped Kafka bus events. The source app does not need Kafka. |
 | Provider cutover | M05 live PG verified | `/api/runs/:runId/provider-cutover` smoke-tests the Aiven provider and switches adapter routes only after Aiven Postgres read/write/event readback passes. `npm run verify:live` passed adapter read/write/event checks live. |
-| Live Aiven verification | M05.5 live PG passed / Kafka env pending | `npm run verify:live` validates Codex/Aiven MCP config, then drives M02/M01/M03/M05/M04 and adapter endpoint checks. Live Aiven Postgres path passes; Kafka remains warning-only until Kafka env is configured. |
+| Live Aiven verification | M05.5 live PG passed / Kafka env pending | `npm run verify:live` validates Agent SDK Aiven MCP runtime config, then drives M02/M01/M03/M05/M04 and adapter endpoint checks. Live Aiven Postgres path passes; Kafka remains warning-only until Kafka env is configured. |
 | Access Broker permission UX | M06A built / live PG verified | `AccessSnapshot`, `/api/runs/:runId/access-preflight`, Access Broker panel, primary-button gating, Kafka warning state, and production not-requested states are implemented. |
 | One-click agent runtime | M05.6 live PG verified | [`plans/one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) is implemented with a bounded orchestrator, typed agent-step registry, deterministic reasoner, and one-click verifier mode. |
-| Anthropic Agent SDK reasoner | M05.7 live verified | [`plans/anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) defines the text-only Report/CTO Agent boundary. `npm run verify:live -- --one-click` passed with `agent sdk reasoner: Anthropic Agent SDK produced proof text`. |
+| Anthropic Agent SDK reasoner | M05.7 live verified | [`plans/anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) defines the bounded Aiven MCP Report/CTO Agent boundary. `npm run verify:live -- --one-click` passed with `agent sdk reasoner: Anthropic Agent SDK produced proof text`. |
 | Control room UI | M06 built / live PG verified | Stage-facing panels, Access Broker, one-click command strip, timeline state badges, realtime/Kafka proof distinction, validation pending states, and final readiness memo typecheck and build. |
 | Aiven workspace bootstrap | M06B built / live PG verified | Setup is now framed as connect/create Aiven workspace; the UI says Henri's pre-connected workspace powers the demo and Aiden can create a workspace during setup. |
 | Source intake setup | M06C built / live PG verified | [`plans/source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) defines and tracks the `/setup` product step for selecting source app, source data path, Aiven workspace mode, and migration scope before the control room. |
@@ -105,9 +105,9 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 ## Mission 05.5 Acceptance
 
 - [x] `npm run verify:live` exists.
-- [x] Verifier checks project `.codex/config.toml` for `mcp_servers.aiven`.
+- [x] Verifier checks Agent SDK Aiven MCP runtime configuration.
 - [x] Verifier checks root `.mcp.json` for the raw Aiven MCP descriptor.
-- [x] Verifier checks Codex MCP OAuth status through `codex mcp list`.
+- [x] Codex MCP config is treated as optional developer tooling, not a runtime gate.
 - [x] Missing `AIVEN_POSTGRES_URL` fails fast with a clear message and no secret output.
 - [x] Verifier sequence covers source scan, proof spine, data migration, provider cutover, Kafka agent bus, adapter reads/writes/events, and final report.
 - [x] Verifier treats Aiven Postgres migration and cutover as hard live gates.
@@ -288,7 +288,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Ran M04 API smoke on `:8877`: full fixture flow stayed at 14 timeline events, `/kafka-agent-bus` returned 10 cached/skipped Kafka bus events, and Kafka receipts used produce/consume tools.
 - Started Mission 05.5 live Aiven verification gate implementation.
 - Added `scripts/verify-live-aiven.mjs` and root `npm run verify:live`.
-- Verifier validates `.codex/config.toml`, `.mcp.json`, and Codex MCP OAuth status before live proof.
+- Verifier validates Agent SDK Aiven MCP runtime config and `.mcp.json` before live proof.
 - Verifier drives `/api/health`, `/api/runs`, source scan, proof spine, data migration, provider cutover, Kafka agent bus, adapter status, posts, leaderboard, reaction write, recent events, and final report.
 - Verifier hard-fails non-live Aiven Postgres migration/cutover proof and warning-handles Kafka only when Kafka env is missing.
 - Ran `npm run verify:live`; it passed MCP config/auth checks and failed fast at missing `AIVEN_POSTGRES_URL`, as expected on this machine.
@@ -316,9 +316,9 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Re-ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
 - Re-ran `npm run verify:live`; live Aiven Postgres access preflight, migration, scoped cutover, runtime read/write/event proof, and final report passed. Kafka remains warning-only.
 - Re-ran `npm run verify:live -- --one-click`; the primary `Graduate To Aiven` route completed the bounded agent workflow against the live Aiven Postgres path.
-- Added `plans/anthropic-agent-sdk-reasoner/README.md` to pin Anthropic Agent SDK usage to the text-only Report/CTO Agent boundary.
+- Added `plans/anthropic-agent-sdk-reasoner/README.md` to pin Anthropic Agent SDK usage to the bounded Aiven MCP Report/CTO Agent boundary.
 - Installed `@anthropic-ai/claude-agent-sdk@0.3.191`.
-- Replaced the partial direct Anthropic HTTP reasoner path with SDK `query()` using one turn, no built-in tools, no MCP config, no settings sources, and deterministic fallback.
+- Replaced the partial direct Anthropic HTTP reasoner path with SDK `query()` using bounded turns, direct Aiven MCP config, no built-in local tools, no settings sources, and deterministic fallback.
 - Re-ran `npm run typecheck`; all workspaces passed.
 - Added standalone Claude Code executable resolution because the bundled SDK ARM64 binary crashed with `SIGTRAP` under this WSL environment; the API now prefers `CLAUDE_CODE_EXECUTABLE` or `~/.local/bin/claude` when present.
 - Re-ran `npm run verify:live -- --one-click`; the live gate passed with `agent sdk reasoner: Anthropic Agent SDK produced proof text`.

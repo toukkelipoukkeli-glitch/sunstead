@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs"
 import { query } from "@anthropic-ai/claude-agent-sdk"
+import type { CanUseTool, McpServerConfig } from "@anthropic-ai/claude-agent-sdk"
 import type { ProofSource, RunSnapshot } from "@aiden/contracts"
 
 export type AgentRunMode = "live_pg" | "cached_ok" | "fixture"
@@ -62,6 +63,13 @@ export type AgentReasonerCallResult = {
   error?: string
 }
 
+export type AivenMcpRuntimeConfig = {
+  enabled: boolean
+  serverName: "aiven"
+  source: "env" | "default"
+  safeLabel: string
+}
+
 export const deterministicReasoner: AgentReasoner = {
   async summarizeBehavior(input) {
     const findingCount = typeof input.findingCount === "number" ? input.findingCount : 0
@@ -106,10 +114,12 @@ const safeReasonerError = (error: unknown) => {
   let message = error instanceof Error ? error.message : String(error)
   const apiKey = readEnv("ANTHROPIC_API_KEY")
   if (apiKey) message = message.split(apiKey).join("[ANTHROPIC_API_KEY]")
+  const aivenToken = readEnv("AIVEN_TOKEN")
+  if (aivenToken) message = message.split(aivenToken).join("[AIVEN_TOKEN]")
   return message.slice(0, 220)
 }
 
-const textOnlyTools = [
+const blockedLocalTools = [
   "Agent",
   "AskUserQuestion",
   "Bash",
@@ -133,6 +143,82 @@ const textOnlyTools = [
   "Workflow",
   "Write"
 ]
+
+const defaultAivenMcpUrl = "https://mcp.aiven.live/mcp?allow_secrets=true"
+
+const aivenMcpToolNames = [
+  "aiven_project_list",
+  "aiven_service_list",
+  "aiven_service_get",
+  "aiven_pg_service_available_extensions",
+  "aiven_kafka_topic_list"
+]
+
+const aivenMcpAllowedTools = aivenMcpToolNames.map((toolName) => `mcp__aiven__${toolName}`)
+const aivenMcpAllowedToolSet = new Set(aivenMcpAllowedTools)
+
+export const readAivenMcpRuntimeConfig = (): AivenMcpRuntimeConfig => {
+  const configured = readEnv("AIVEN_MCP_URL")
+  const url = configured ?? defaultAivenMcpUrl
+  let safeLabel = "hosted Aiven MCP endpoint"
+  try {
+    safeLabel = new URL(url).host
+  } catch {
+    safeLabel = "configured Aiven MCP endpoint"
+  }
+
+  return {
+    enabled: true,
+    serverName: "aiven",
+    source: configured ? "env" : "default",
+    safeLabel
+  }
+}
+
+const readAivenMcpUrl = () => readEnv("AIVEN_MCP_URL") ?? defaultAivenMcpUrl
+
+const readPositiveInt = (name: string, fallback: number) => {
+  const value = readEnv(name)
+  if (!value) return fallback
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 1000 ? parsed : fallback
+}
+
+export const buildAivenMcpServers = (): Record<string, McpServerConfig> => ({
+  aiven: {
+    type: "http",
+    url: readAivenMcpUrl(),
+    timeout: readPositiveInt("AIVEN_MCP_TOOL_TIMEOUT_MS", 90_000),
+    tools: aivenMcpToolNames.map((name) => ({
+      name,
+      permission_policy: "always_allow"
+    }))
+  }
+})
+
+const allowOnlyAivenMcpTools: CanUseTool = async (toolName, input) => {
+  if (!toolName.startsWith("mcp__aiven__")) {
+    return {
+      behavior: "deny",
+      message: "Aiden's Agent SDK runtime only permits the configured Aiven MCP server.",
+      decisionClassification: "user_reject"
+    }
+  }
+
+  if (!aivenMcpAllowedToolSet.has(toolName)) {
+    return {
+      behavior: "deny",
+      message: `Aiden does not allow ${toolName} from the report/control agent path.`,
+      decisionClassification: "user_reject"
+    }
+  }
+
+  return {
+    behavior: "allow",
+    updatedInput: input,
+    decisionClassification: "user_permanent"
+  }
+}
 
 const agentSdkEnv = (apiKey: string): Record<string, string | undefined> => ({
   ANTHROPIC_API_KEY: apiKey,
@@ -172,7 +258,10 @@ const requestAnthropicText = async (
       "Use only the provided JSON facts.",
       "Return only the requested prose. Do not use markdown.",
       "Do not invent live proof, prices, credentials, production readiness, or validation status.",
-      "Never request tools. Never mention secrets.",
+      "Before answering, try one safe read-only Aiven MCP call for project or service context if the configured server is reachable.",
+      "If Aiven MCP is unavailable, answer from the provided JSON facts without claiming a live MCP call.",
+      "Do not use shell, file, web, local settings, non-Aiven MCP servers, or unlisted Aiven MCP tools.",
+      "Never mention secrets.",
       "",
       instruction,
       "",
@@ -184,17 +273,18 @@ const requestAnthropicText = async (
       prompt,
       options: {
         abortController,
-        disallowedTools: textOnlyTools,
+        allowedTools: aivenMcpAllowedTools,
+        canUseTool: allowOnlyAivenMcpTools,
+        disallowedTools: blockedLocalTools,
         env: agentSdkEnv(apiKey),
         maxBudgetUsd: 0.05,
-        maxTurns: 1,
-        mcpServers: {},
+        maxTurns: 2,
+        mcpServers: buildAivenMcpServers(),
         model,
         pathToClaudeCodeExecutable: readClaudeExecutable(),
         permissionMode: "dontAsk",
         settingSources: [],
-        strictMcpConfig: true,
-        tools: []
+        strictMcpConfig: true
       }
     })) {
       if (message.type !== "result") continue

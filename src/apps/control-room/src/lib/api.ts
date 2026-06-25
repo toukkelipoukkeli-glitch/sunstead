@@ -2,10 +2,24 @@ import type { AddReactionInput, Post, PulseWallEvent, Report, RunSnapshot, Setup
 import type { SetupRuntimeConfig } from "./setupProfile"
 
 const readJson = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`)
+  const text = await response.text()
+  let body: unknown
+  try {
+    body = text ? JSON.parse(text) : undefined
+  } catch {
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}${text ? `: ${text.slice(0, 160)}` : ""}`)
+    }
+    throw new Error("API returned invalid JSON.")
   }
-  return response.json() as Promise<T>
+  if (!response.ok) {
+    const message =
+      body && typeof body === "object" && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `${response.status} ${response.statusText}`
+    throw new Error(message)
+  }
+  return body as T
 }
 
 export const createRun = async (setupProfile?: SetupProfile) =>
@@ -36,7 +50,25 @@ export type GitHubRepositorySummary = {
 }
 
 export const getGitHubInstallUrl = async () =>
-  readJson<{ configured: boolean; url?: string; missingEnv: string[] }>(await fetch("/api/github/install-url"))
+  readJson<{ configured: boolean; url?: string; setupUrl?: string; missingEnv: string[] }>(
+    await fetch("/api/github/install-url")
+  )
+
+export const completeGitHubManifest = async (input: { code: string; state?: string; setupUrl: string }) =>
+  readJson<{
+    ok: true
+    configured: true
+    appId: number
+    appSlug: string
+    setupUrl?: string
+    installUrl?: string
+  }>(
+    await fetch("/api/github/manifest/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    })
+  )
 
 export const listGitHubRepositories = async (installationId: number) =>
   readJson<{ repositories: GitHubRepositorySummary[] }>(

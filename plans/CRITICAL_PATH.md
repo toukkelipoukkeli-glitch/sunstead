@@ -54,7 +54,7 @@ Before starting implementation, read these in order. This file owns the mission 
 13. [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md) — M06B spec for "connect or create Aiven workspace" product framing and demo-safe hardwiring to Henri's workspace.
 14. [`source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) — M06C spec for source selection, source data path, workspace selection, and scope confirmation before the control room.
 15. [`one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) — M05.6 spec for the bounded one-click agent orchestrator and optional Anthropic reasoner.
-16. [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as a text-only Report/CTO Agent.
+16. [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as the bounded Aiven MCP Report/CTO Agent.
 
 Do not start broad visual expansion or agent-framework work until the reader can explain the demo-safe runtime path:
 
@@ -141,7 +141,7 @@ Forward knowns:
 
 - PulseWall exists under `demo/pulsewall/`.
 - Supabase-style behavior is detectable in source and migrations.
-- Aiven MCP config is the required sponsor-facing control-plane surface; the current API runtime uses direct Aiven fallback for live proof actions and labels those receipts honestly.
+- Aiven MCP through the Anthropic Agent SDK is the required sponsor-facing control-plane surface; direct Aiven fallback is allowed only for live data-plane proof actions and must be labeled honestly.
 - Aiven Apps is not available.
 - Backend glue must run locally for the demo.
 - Kafka is kept off the browser-critical path; browser realtime uses Aiven Postgres `app_events` through polling.
@@ -284,7 +284,7 @@ Depends on: Aiven credentials and target project
 
 Target:
 
-Replace the fixture Aiven receipt blocks with a small sponsor-visible live Aiven proof spine. The current runtime uses direct Aiven fallback for proof actions and labels those receipts; a real MCP action can replace the same slot later. Kafka here is only a smoke proof; Mission 04 owns the visible Kafka workflow-events panel.
+Replace the fixture Aiven receipt blocks with a small sponsor-visible live Aiven proof spine. The Agent SDK owns the Aiven MCP control-plane path; current Postgres/Kafka data-plane proof code may use direct fallback only when the equivalent MCP action is not reliable yet, and must label those receipts. Kafka here is only a smoke proof; Mission 04 owns the visible Kafka workflow-events panel.
 
 Build:
 
@@ -308,7 +308,7 @@ Kill/fallback:
 
 - If service creation is flaky, pre-provision and only verify.
 - If Kafka topic creation is flaky, pre-create topic and only produce/list.
-- If MCP wrapper blocks execution, call the same action through the lowest-risk available Aiven client and label it as fallback; add one live MCP action only if it is reliable before rehearsal.
+- If an MCP write/read wrapper blocks browser-critical execution, call the same action through the lowest-risk available Aiven client and label it as fallback; the Agent SDK MCP control-plane probe remains the canonical sponsor-facing path.
 
 ## Mission 02: PulseWall Scanner + Behavior Graph
 
@@ -590,8 +590,9 @@ Depends on: Mission 05.6 one-click runtime
 
 Target:
 
-Use Anthropic Agent SDK for the bounded Report/CTO Agent without giving the LLM authority over
-Aiven, Postgres, Kafka, files, shell, or MCP.
+Use Anthropic Agent SDK for the bounded Report/CTO Agent and Aiven control-plane context. Give it
+direct access to the Aiven MCP server, not Codex project settings, while keeping shell/file/web tools
+disabled.
 
 Detailed spec:
 
@@ -601,7 +602,7 @@ Build:
 
 - install `@anthropic-ai/claude-agent-sdk`;
 - implement an SDK-backed `AgentReasoner`;
-- restrict SDK execution to one text-only turn with no built-in tools, MCP config, or local settings sources;
+- restrict SDK execution to bounded turns with no built-in shell/file/web tools, no local settings sources, and only allowlisted Aiven MCP tools;
 - keep deterministic fallback;
 - store reasoner metadata in `proof.package.generated.details`;
 - verify one-click proof package records `anthropic_agent_sdk` when the SDK succeeds.
