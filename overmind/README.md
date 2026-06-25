@@ -32,30 +32,36 @@
 
 ---
 
-## What it is
+**Overmind is the agentic front door to Aiven.** Point it at a Lovable/Supabase app and a swarm of autonomous Claude agents *graduates the heavy backend layer — data, realtime, vector search — onto Aiven while you watch.* Then an always-on **CTO agent** stays on and operates it. You never open a dashboard.
 
-You build fast on a starter stack — then you outgrow it. The app scales, the bill climbs, and you
-suddenly need **proper, production-grade infrastructure**: managed Postgres, real streaming, scaling,
-pooling, replicas. But the starter backend locks you in, hides your credentials, and getting your
-data out without losing a row is the kind of job you're not supposed to have to do.
+### The moment we built for
+You vibe-code a hit on Lovable, ship it on Supabase, and never think about infra — that is the whole point. Then it scales, you need real database infrastructure, and the bill climbs with you. But the starter stack **locks you in**: Lovable hides your DB credentials, the costs are high, and getting your data out — without losing a row — is painful, expensive, and terrifying. You are not an infra engineer — but you now need **proper, production-grade infrastructure**: managed Postgres, real streaming, scaling, pooling, replicas. **Lovable builds the app; Aiven should run it the moment it becomes a company.** Overmind is that exit ramp, automated.
 
-**Overmind is the exit ramp.** It doesn't just copy tables — it does **behavior migration**: it
-recovers what your app expected its backend to *do* (auth, storage, realtime, data API, vector
-search) and re-expresses each behavior on an Aiven-native primitive. It moves your data with verified
-row-count parity, generates the replacement backend, opens a pull request, and then **stays on as an
-always-on CTO agent** reading live Aiven metrics. Your data and realtime go live on Aiven; the app
-keeps shipping; your CTO operates it.
+### Behavior migration, not just data migration
+Data migration asks *"can I copy these tables?"* Overmind asks *"what did this app expect its backend to **do** — auth, storage, realtime, data API, vector search — and which of those become Aiven-native?"* One click runs a 10-phase swarm: **recon → graph → plan → provision → migrate → generate → heal → verify → cutover → operate.**
 
-> **Behavior migration, not just data migration.** Data migration asks *"can I copy these tables?"*
-> Overmind asks *"what did this app expect its backend to **do** — and which of those become
-> Aiven-native?"*
+- **Recon** scans the repo *and* introspects the live database into a **behavior graph** with evidence (file:line / `pg_*` catalog) and a 0–100 readiness score.
+- **Operator** drives the **live Aiven MCP** to provision a fresh Aiven Postgres (pgvector) + Kafka, create topics, and read connection info. Every `aiven_*` call becomes a **receipt** in an auditable ledger streamed live to mission control.
+- **Migrator + Verifier** move schema, rows and embeddings, then prove it: **row-count parity** vs. the source, a smoke query, a real **Kafka produce→consume roundtrip**, and a **pgvector similarity search** on the new DB.
+- **Surgeon + Healer** generate the Aiven-native replacement backend (JWT auth, data API, Kafka→SSE realtime bridge, vector search) and self-heal it in a generate → check → patch → re-check loop — then open a real **GitHub PR**. Where the sensible migrator *flags* auth/storage as "adapter required," Overmind *builds* them.
+- **CTO** never leaves: it reads live `pg_stat` + Aiven metrics and answers *"what should I do next?"* — scale this, index that, the cheaper and greener region. You can talk to it.
+
+### Built for "The Autonomous Data Operator"
+- **MCP depth (34%):** a real Opus-4.8 agent autonomously *chains* the Aiven MCP — `aiven_service_create/_get/_type_plans/_plan_pricing/_connection_info`, `aiven_pg_write/_read/_service_available_extensions/_optimize_query`, `aiven_kafka_topic_create/_message_produce/_message_list`, `aiven_service_metrics_fetch`. MCP is not one decorative call — *its output is the connection string the migrated app runs on.* And **Overmind is itself an MCP server**: it exposes `overmind_analyze / _status / _advise / _cost / _services / _migrate`, so any agent can drive a full migration. MCP all the way down.
+- **Workflow autonomy (33%):** one human input ("Graduate"). The swarm picks the plan, region and target stack itself, writes and repairs its own generated code, and **agents self-register for scoped JWTs** (WorkOS AuthKit) before they are allowed to run.
+- **Creativity & impact (33%):** the **behavior graph** + the **operator layer** ("never open the dashboard") are a genuinely new way to consume Aiven. Every migration lands an Aiven account the moment a startup is scaling — onto **real, production-grade infrastructure**, not just a cheaper backend — and every CTO suggestion expands consumption: Aiven for Startups' land-and-expand, automated, with a **cost delta ($599/mo → Aiven)** and a carbon-aware region as bonus.
+
+### What is real (no smoke)
+Live on Aiven project `touko-1f1c`: the agent provisions services and creates topics via MCP; real schema, rows and embeddings move with verified parity; a nonce-matched Kafka roundtrip and pgvector search run against it; the CTO reads live metrics. Every external key is optional and degrades to a labelled deterministic path, so the pipeline always runs end to end. **Honest caveat:** the generated backend is generated and checked but not yet *deployed* — Aiven Apps is limited-availability. Real where it's real, honest where it isn't.
+
+### Tech stack
+TypeScript throughout. **Anthropic Claude (Opus 4.8)** drives the agent swarm; the **Aiven MCP** (via the Messages API MCP connector) is the control plane; **Aiven for PostgreSQL (+pgvector)** and **Aiven for Apache Kafka** are the data plane and agent bus. Hono + SSE API; a React/Vite mission control that is a pure function of the event stream; `pg`, `kafkajs`; WorkOS + `jose` for agentic auth; `@modelcontextprotocol/sdk` for the Overmind MCP; ElevenLabs for a Voice CTO briefing.
 
 ---
 
-## How it works
+## Architecture
 
-One click runs a swarm of specialist agents through a 10-phase pipeline. Every infrastructure action
-is an autonomous tool call recorded as an auditable **receipt** and streamed live to Mission Control.
+One click runs the swarm through a 10-phase pipeline; every infrastructure action is an autonomous tool call recorded as an auditable **receipt** and streamed live to Mission Control.
 
 ```mermaid
 flowchart LR
@@ -73,60 +79,7 @@ flowchart LR
   CTO -. "live metrics" .-> AV
 ```
 
-| Phase | What happens |
-|---|---|
-| **recon** | Clone the repo, scan the code, and introspect the live source database. |
-| **graph** | Classify every backend behavior into a **behavior graph** with a 0–100 readiness score. |
-| **plan** | Design the target Aiven stack (Postgres + pgvector, Kafka) and estimate cost. |
-| **provision** | Create a fresh Aiven Postgres and Kafka **live through the Aiven MCP**. |
-| **migrate** | Move schema, rows and embeddings into Aiven Postgres. |
-| **generate** | Write the Aiven-native backend — JWT auth, data API, a Kafka→SSE realtime bridge, vector search. |
-| **heal** | Test the generated code, read the real errors, patch, and repeat until green. |
-| **verify** | Assert row-count parity, run a Kafka produce→consume roundtrip and a pgvector search. |
-| **cutover** | Open a GitHub pull request repointing the app at its new Aiven backend. |
-| **operate** | The CTO agent reads live Aiven metrics and recommends the next move — scale, index, region. |
-
-**The swarm** — Recon (reads the app) · Architect (graph → Aiven stack + cost) · Operator (drives the
-Aiven MCP) · Surgeon (generates the backend) · Migrator (moves data + embeddings) · Healer
-(generate → test → patch loop) · Verifier (parity, Kafka, vector search) · CTO (stays on, reads live
-metrics). Each agent is a bounded tool-loop — autonomy you can audit, not a free-form shell.
-
-> Every external dependency is optional. Missing a key drops that stage to a deterministic path, so
-> the full pipeline runs end to end out of the box — add credentials to make it live.
-
----
-
-## MCP, two ways
-
-Overmind treats the **[Model Context Protocol](https://modelcontextprotocol.io)** as the data layer,
-both as a client and as a server.
-
-**It drives the Aiven MCP.** A Claude (Opus 4.8) agent connects to the live Aiven MCP via the
-Messages API MCP connector and calls the tools itself — provisioning services, creating topics,
-reading connection info, writing and reading rows, fetching metrics. The MCP isn't a cosmetic call:
-*its output is the connection string the migrated app actually runs on.*
-
-```
-aiven_service_create · aiven_service_get · aiven_service_type_plans · aiven_service_plan_pricing
-aiven_service_connection_info · aiven_pg_write · aiven_pg_read · aiven_pg_optimize_query
-aiven_pg_service_available_extensions · aiven_kafka_topic_create · aiven_kafka_topic_message_produce
-aiven_kafka_topic_message_list · aiven_service_metrics_fetch
-```
-
-**It is itself an MCP server.** Overmind exposes its own operations as MCP tools (stdio,
-[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol)), so any agent in any MCP
-client can drive a full migration:
-
-| Tool | Does |
-|---|---|
-| `overmind_analyze` | Scan an app → behavior graph + readiness score (read-only). |
-| `overmind_migrate` | Run a full migration onto Aiven. |
-| `overmind_status` | Live infra health, in plain English. |
-| `overmind_advise` | The CTO's next-move recommendations. |
-| `overmind_cost` | Aiven cost vs. the source backend. |
-| `overmind_services` | List the tenant's Aiven services. |
-
-See [`mcp/README.md`](mcp/README.md) for the server.
+`recon → graph → plan → provision → migrate → generate → heal → verify → cutover → operate`
 
 ---
 
@@ -205,15 +158,8 @@ mcp/       the Overmind MCP server — overmind_* tools over stdio
 ```
 
 The contract for the whole system is one file — [`shared/types.ts`](shared/types.ts) — imported by
-every package and the UI.
-
----
-
-## Tech stack
-
-**TypeScript** · **Hono** + SSE · **React** + **Vite** · **Anthropic Claude (Opus 4.8)** ·
-**Aiven for PostgreSQL** (+ pgvector) · **Aiven for Apache Kafka** ·
-**MCP** (`@modelcontextprotocol/sdk`) · `pg` · `kafkajs` · WorkOS + `jose` · ElevenLabs.
+every package and the UI. Drive a migration from any MCP client via the Overmind MCP server — see
+[`mcp/README.md`](mcp/README.md).
 
 ---
 
