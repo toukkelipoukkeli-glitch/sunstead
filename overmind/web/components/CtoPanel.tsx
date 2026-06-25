@@ -2,8 +2,8 @@ import type { CtoRecommendation } from '../../shared/types.ts'
 import { Gauge, ArrowRight } from '../icons.tsx'
 
 /**
- * Zone 3f — the persistent CTO operator. It never leaves: reads live Aiven
- * metrics forever and emits scaling / index / cost / carbon moves.
+ * Zone 3f — the persistent CTO operator. It stays on: reads live Aiven
+ * metrics and emits scaling / index / cost / carbon moves.
  */
 export function CtoPanel({ recs }: { recs: CtoRecommendation[] }) {
   return (
@@ -20,7 +20,7 @@ export function CtoPanel({ recs }: { recs: CtoRecommendation[] }) {
 
       {recs.length === 0 ? (
         <div className="empty pulse-wait">
-          The CTO agent stays on after cutover, optimizing the live Aiven system…
+          The CTO agent stays on once your data is live on Aiven, optimizing the running system…
         </div>
       ) : (
         <div className="cto-list">

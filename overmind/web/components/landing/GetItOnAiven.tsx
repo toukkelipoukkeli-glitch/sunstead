@@ -12,12 +12,12 @@ export function GetItOnAiven() {
           <span className="lp-kicker">
             <Cloud size={14} /> Get it on Aiven
           </span>
-          <h2 className="lp-h2">One click. Your heavy layer, running on Aiven.</h2>
+          <h2 className="lp-h2">One click. Your heavy layer, live on Aiven.</h2>
           <p className="lp-lede">
-            Overmind ships as an Aiven App. The swarm provisions Postgres and Kafka in your own
-            Aiven project, deploys the data plane with <code>aiven_application_deploy</code>, and
-            hands you a live Aiven-native data plane — the rest stays on Lovable. On any cloud, in
-            minutes, with no infra ops.
+            The swarm provisions Postgres and Kafka in your own Aiven project via the Aiven MCP and
+            moves your data + realtime onto them — then hands you a live Aiven-native data plane. The
+            rest of your app keeps shipping on Lovable, and your CTO agent operates it. On any cloud,
+            in minutes, with no infra ops.
           </p>
 
           <div className="lp-deploy-steps">
@@ -76,7 +76,7 @@ export function GetItOnAiven() {
                 <span className="lp-row-ico">
                   <Check size={15} />
                 </span>{' '}
-                Backend service · deployed
+                Aiven-native backend · generated
               </span>
               <span>
                 <span className="lp-row-ico">

@@ -23,9 +23,9 @@ export function Hero() {
         <p className="lp-hero-sub">
           Stop managing migrations. Point Overmind at any Lovable or Supabase app and a swarm of
           autonomous agents graduates the heavy parts — data, realtime, vector search — onto Aiven,
-          provisions them via MCP, self-heals until every test is green, then operates them for you.
+          provisions them via MCP, generates the Aiven-native backend, then operates them for you.
           Your data, realtime and search live on Aiven; the rest of your app keeps shipping on
-          Lovable. Zero downtime. Backed by Aiven&apos;s 99.99% SLA.
+          Lovable, and your CTO agent runs it.
         </p>
 
         <div className="lp-hero-cta">
@@ -47,12 +47,12 @@ export function Hero() {
           </span>
           <span className="lp-dot-sep" />
           <span>
-            <strong>0</strong> downtime
+            <strong>always-on</strong> CTO agent
           </span>
         </div>
 
         <div className="lp-logos">
-          <span className="lp-logos-label">Rebuilds onto</span>
+          <span className="lp-logos-label">Built on</span>
           <span className="lp-logo-pill">
             <ServiceIcon kind="postgres" size={22} /> Aiven for PostgreSQL®
           </span>
@@ -63,7 +63,7 @@ export function Hero() {
             <ServiceIcon kind="pgvector" size={22} /> pgvector
           </span>
           <span className="lp-logo-pill">
-            <ServiceIcon kind="app" size={22} /> Aiven Apps
+            <ServiceIcon kind="app" size={22} /> Aiven MCP
           </span>
         </div>
       </div>

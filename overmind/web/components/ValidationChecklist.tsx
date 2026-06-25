@@ -2,8 +2,8 @@ import type { ValidationCheck } from '../../shared/types.ts'
 import { Check, Shield } from '../icons.tsx'
 
 /**
- * Zone 3d — the verifier's gate. Row parity, boot, query, kafka roundtrip,
- * auth flow, search — all must go green before cutover is real.
+ * Zone 3d — the verifier's gate. Row parity, query, kafka roundtrip, search —
+ * the checks that confirm your data + realtime really landed on Aiven.
  */
 export function ValidationChecklist({ checks }: { checks: Record<string, ValidationCheck> }) {
   const list = Object.values(checks)
@@ -21,7 +21,7 @@ export function ValidationChecklist({ checks }: { checks: Record<string, Validat
           Validation
         </h3>
         <span className={`meta ${allGreen ? 'all-green' : ''}`}>
-          {passed} / {list.length || '—'} green {allGreen ? '· cutover cleared' : ''}
+          {passed} / {list.length || '—'} green {allGreen ? '· parity confirmed' : ''}
         </span>
       </div>
 

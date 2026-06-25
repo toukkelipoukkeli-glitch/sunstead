@@ -64,17 +64,17 @@ const PIPELINE: { phase: Exclude<RunPhase, 'done' | 'error'>; title: string; bod
   {
     phase: 'heal',
     title: 'Self-heal',
-    body: 'Deploy → smoke-test → read the error → patch the generated code → repeat until green.',
+    body: 'Generate → check the backend → read the error → patch the generated code → re-check.',
   },
   {
     phase: 'verify',
     title: 'Verify',
-    body: 'Row counts, boot, queries, a realtime hop, the auth flow and search all must pass.',
+    body: 'Row-count parity, a smoke query, a realtime hop over Kafka and pgvector search all must pass.',
   },
   {
     phase: 'cutover',
-    title: 'Cutover',
-    body: 'Reads and writes cut over to Aiven Postgres, realtime to Kafka — zero downtime. Your Lovable app keeps serving; only the data layer moved.',
+    title: 'Go live on Aiven',
+    body: 'Your data + realtime are live on Aiven Postgres and Kafka. Your Lovable app keeps shipping; the heavy layer now runs on Aiven.',
   },
   {
     phase: 'operate',

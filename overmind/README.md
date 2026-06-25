@@ -1,13 +1,15 @@
 # Aiven Overmind
 
-> **Point Overmind at any Lovable/Supabase app → a swarm of agents rebuilds it on Aiven,
-> 100% working, while you watch — then runs it for you forever.**
+> **Point Overmind at any Lovable/Supabase app → a swarm of agents graduates its heavy layer —
+> data, realtime, search — onto Aiven while you watch, then a CTO agent runs it for you.**
 
-Aiven Overmind is an autonomous agent swarm that **graduates a vibe-coded Lovable/Supabase app
-onto Aiven**. It doesn't just copy tables. It recovers what the app *expected its backend to do* —
-auth, storage, realtime, data API, vector search — re-expresses each behavior on an Aiven-native
-primitive, generates the replacement backend, self-heals it until every smoke test is green,
-verifies the cutover, and then **stays on as an always-on CTO operator** reading live Aiven metrics.
+Aiven Overmind is an autonomous agent swarm that **graduates a vibe-coded Lovable/Supabase app's
+backend onto Aiven**. It doesn't just copy tables. It recovers what the app *expected its backend to
+do* — auth, storage, realtime, data API, vector search — re-expresses each behavior on an
+Aiven-native primitive, moves your data with verified row-count parity, generates the replacement
+backend, verifies the data + realtime really landed, and then **stays on as an always-on CTO
+operator** reading live Aiven metrics. Your data + realtime go live on Aiven; the app keeps shipping
+on Lovable; your CTO operates it.
 
 This is the ambitious sibling of the sensible one-click migrator. Where the honest "Aiden" approach
 **flags** the hard behaviors (auth/storage) as "adapter required," **Overmind builds them**. Zero
@@ -46,8 +48,8 @@ tools, receipt ledger — autonomy that's auditable, not a free-form shell):
 - **Operator** — drives the **Aiven MCP**: provision PG + Kafka, topics, connection info, receipts.
 - **Surgeon** — *generates* the Aiven-native backend, one service per behavior.
 - **Migrator** — moves schema + data + embeddings into Aiven Postgres.
-- **Healer** (loop) — deploy → smoke-test → read error → patch → repeat until green.
-- **Verifier** — row-count parity, smoke query, Kafka roundtrip, auth flow, pgvector search.
+- **Healer** (loop) — generate → check the backend → read error → patch → re-check.
+- **Verifier** — row-count parity, smoke query, Kafka roundtrip, pgvector search.
 - **CTO** (persistent) — reads live Aiven metrics → scaling / index / cost / **carbon** moves.
 
 ### The 10-phase state machine (`server/orchestrator.ts`)
@@ -139,10 +141,11 @@ What is genuinely real in the demo, and where to see it:
 - **Real migrated data.** Schema + representative rows + embeddings land in Aiven Postgres; the
   Verifier asserts **row-count parity** against the source and a live smoke query (`select 1`,
   `pg_extension` check for `vector`).
-- **Realtime actually hops over Aiven Kafka.** At cutover the realtime spine produces an event to an
+- **Realtime actually hops over Aiven Kafka.** The realtime spine produces an event to an
   Aiven Kafka topic and consumes it back — Supabase Realtime re-expressed as a Kafka + SSE bridge.
-- **The self-heal loop runs real generated code.** `server/heal.ts` deploys the Surgeon's output,
-  smoke-tests it, feeds real errors to the Healer agent, patches, and retries until green.
+- **The self-heal loop runs over real generated code.** `server/heal.ts` generates the Surgeon's
+  output, checks the backend, feeds real errors to the Healer agent, patches, and re-checks. (The
+  generated backend is generated, not deployed — Aiven Apps deployment is the LA-gated stretch.)
 - **The CTO agent emits real recommendations from real metrics.** `server/cto.ts` reads live Aiven
   metrics via the MCP/REST surface → scaling / index / pooling / **carbon-aware region** moves.
 - **Agents authenticate themselves.** An agent self-registers for a scoped JWT before it can start a

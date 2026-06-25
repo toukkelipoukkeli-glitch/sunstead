@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aiven Overmind — pitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* Aiven brand */
+    --bg:#ffffff;
+    --ink:#0b1f1e;          /* near-black, warm green-tinted */
+    --muted:#5a6b6a;        /* secondary text */
+    --faint:#8a9897;        /* tertiary */
+    --line:#e3eae9;         /* hairlines */
+    --surface:#f5f9f8;      /* card fill */
+    --surface2:#eef5f4;     /* deeper card fill */
+    --teal:#007b78;         /* primary teal-green */
+    --green:#088247;        /* secondary green */
+    /* rainbow accents */
+    --violet:#6f64ff;
+    --blue:#0b9ecf;
+    --magenta:#df56f2;
+    --orange:#fe7239;
+    --yellow:#fdcd12;
+    --rainbow:linear-gradient(95deg,#6f64ff,#0b9ecf 28%,#df56f2 52%,#fe7239 76%,#fdcd12);
+    --teals:linear-gradient(95deg,#007b78,#088247);
+    --head:"Funnel Display",-apple-system,BlinkMacSystemFont,sans-serif;
+    --body:"Inter",-apple-system,BlinkMacSystemFont,sans-serif;
+    --mono:"Geist Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--body);
+    overflow:hidden; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  /* subtle brand glow, kept clean */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(680px 460px at 88% -12%, rgba(0,123,120,.06), transparent 60%),
+      radial-gradient(620px 480px at -6% 110%, rgba(111,100,255,.05), transparent 60%);
+  }
+
+  .deck{position:fixed; inset:0; z-index:1}
+  .slide{
+    position:absolute; inset:0; display:none;
+    padding:7vh 8vw 11vh; flex-direction:column; justify-content:center;
+    animation:fade .45s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0; transform:translateY(12px)}to{opacity:1; transform:none}}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:clamp(11px,1.05vw,14px); letter-spacing:.22em; text-transform:uppercase;
+    color:var(--teal); font-weight:600; margin-bottom:2.4vh;
+    display:inline-flex; align-items:center; gap:12px;
+  }
+  .eyebrow::before{content:""; width:26px; height:2px; border-radius:2px; background:var(--teals)}
+
+  h1{font-family:var(--head); font-size:clamp(42px,6.6vw,92px); line-height:.98; letter-spacing:-.025em; font-weight:700}
+  h2{font-family:var(--head); font-size:clamp(30px,4.9vw,62px); line-height:1.02; letter-spacing:-.022em; font-weight:700}
+  .sub{font-size:clamp(16px,1.7vw,23px); color:var(--muted); margin-top:2.8vh; max-width:30ch; line-height:1.45; font-weight:400}
+  .sub.wide{max-width:46ch}
+  .teal{color:var(--teal)}
+  .green{color:var(--green)}
+  .grad{background:var(--teals); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .rgrad{background:var(--rainbow); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .mono{font-family:var(--mono)}
+
+  /* rainbow strip motif (Aiven signature) */
+  .rstrip{display:flex; height:5px; width:128px; border-radius:5px; overflow:hidden; margin-bottom:3vh}
+  .rstrip i{flex:1}
+  .rstrip i:nth-child(1){background:var(--violet)}
+  .rstrip i:nth-child(2){background:var(--blue)}
+  .rstrip i:nth-child(3){background:var(--magenta)}
+  .rstrip i:nth-child(4){background:var(--orange)}
+  .rstrip i:nth-child(5){background:var(--yellow)}
+
+  /* numbered beats */
+  .beats{margin-top:3.4vh; display:flex; flex-direction:column; gap:2vh; max-width:50ch}
+  .beat{display:flex; gap:18px; align-items:flex-start; font-size:clamp(16px,1.75vw,23px); line-height:1.34}
+  .beat .n{
+    flex:0 0 auto; width:1.85em; height:1.85em; border-radius:11px; display:grid; place-items:center;
+    font-family:var(--mono); font-size:.62em; font-weight:600; color:#fff;
+  }
+  .beat:nth-child(1) .n{background:var(--orange)}
+  .beat:nth-child(2) .n{background:var(--magenta)}
+  .beat:nth-child(3) .n{background:var(--violet)}
+  .beat b{color:var(--ink); font-weight:600}
+  .beat .m{color:var(--muted)}
+
+  /* flow row (slide 2) */
+  .flow{margin-top:4vh; display:flex; align-items:stretch; gap:0; flex-wrap:wrap}
+  .step{
+    flex:1 1 0; min-width:190px; background:var(--surface); border:1px solid var(--line);
+    border-radius:16px; padding:2.4vh 1.6vw; position:relative;
+  }
+  .step .tag{font-family:var(--mono); font-size:clamp(11px,1vw,13px); letter-spacing:.14em; text-transform:uppercase; font-weight:600}
+  .step:nth-child(1) .tag{color:var(--violet)}
+  .step:nth-child(3) .tag{color:var(--blue)}
+  .step:nth-child(5) .tag{color:var(--green)}
+  .step h3{font-family:var(--head); font-size:clamp(18px,1.9vw,26px); margin:1.1vh 0 .9vh; line-height:1.08; font-weight:600}
+  .step p{color:var(--muted); font-size:clamp(13px,1.35vw,17px); line-height:1.4}
+  .arrow{flex:0 0 auto; display:grid; place-items:center; padding:0 .7vw; color:var(--faint); font-size:clamp(20px,2.2vw,30px); font-weight:300}
+
+  /* demo timeline (slide 3) */
+  .demoTag{
+    display:inline-flex; align-items:center; gap:13px; font-family:var(--mono);
+    font-size:clamp(12px,1.15vw,15px); font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--green);
+  }
+  .live{width:12px;height:12px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(8,130,71,.5);animation:pulse 1.7s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 13px rgba(8,130,71,0)}100%{box-shadow:0 0 0 0 rgba(8,130,71,0)}}
+  .tl{margin-top:3.6vh; display:grid; grid-template-columns:repeat(2,1fr); gap:1.6vh 2vw; max-width:78vw}
+  .chip{
+    display:flex; gap:16px; align-items:flex-start; background:var(--surface); border:1px solid var(--line);
+    border-radius:15px; padding:2vh 1.5vw;
+  }
+  .chip .k{
+    flex:0 0 auto; width:2.1em;height:2.1em;border-radius:11px; display:grid;place-items:center;
+    font-family:var(--mono); font-weight:600; color:#fff; font-size:clamp(14px,1.5vw,19px);
+  }
+  .chip:nth-child(1) .k{background:var(--violet)}
+  .chip:nth-child(2) .k{background:var(--blue)}
+  .chip:nth-child(3) .k{background:var(--magenta)}
+  .chip:nth-child(4) .k{background:var(--orange)}
+  .chip h4{font-family:var(--head); font-size:clamp(16px,1.7vw,22px); font-weight:600; line-height:1.12}
+  .chip small{display:block; color:var(--muted); font-weight:400; font-size:clamp(12px,1.25vw,15.5px); margin-top:.4em; line-height:1.35}
+  .chip code{font-family:var(--mono); color:var(--teal); font-size:.92em}
+
+  /* proof grid (slide 4) */
+  .proof{margin-top:3.4vh; display:grid; grid-template-columns:repeat(2,1fr); gap:1.6vh 2.2vw; max-width:80vw}
+  .pcard{background:var(--surface); border:1px solid var(--line); border-radius:15px; padding:2.1vh 1.7vw}
+  .pcard .h{display:flex; align-items:center; gap:11px; margin-bottom:.7vh}
+  .pcard .dot{width:9px;height:9px;border-radius:50%; flex:0 0 auto}
+  .pcard:nth-child(1) .dot{background:var(--teal)}
+  .pcard:nth-child(2) .dot{background:var(--blue)}
+  .pcard:nth-child(3) .dot{background:var(--green)}
+  .pcard:nth-child(4) .dot{background:var(--violet)}
+  .pcard h4{font-family:var(--head); font-size:clamp(16px,1.65vw,22px); font-weight:600; line-height:1.1}
+  .pcard p{color:var(--muted); font-size:clamp(13px,1.35vw,16.5px); line-height:1.4}
+  .pcard code{font-family:var(--mono); color:var(--teal); font-size:.9em}
+  .honest{
+    margin-top:2.6vh; font-size:clamp(14px,1.45vw,19px); color:var(--muted); max-width:62ch; line-height:1.4;
+    padding-left:16px; border-left:3px solid var(--yellow);
+  }
+  .honest b{color:var(--ink); font-weight:600}
+
+  /* why-it-wins (slide 5) */
+  .wins{margin-top:3.4vh; display:grid; grid-template-columns:repeat(3,1fr); gap:2.2vw; max-width:84vw}
+  .win{background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:2.6vh 1.5vw; position:relative; overflow:hidden}
+  .win::before{content:""; position:absolute; top:0; left:0; right:0; height:4px}
+  .win:nth-child(1)::before{background:var(--blue)}
+  .win:nth-child(2)::before{background:var(--violet)}
+  .win:nth-child(3)::before{background:var(--magenta)}
+  .win .score{font-family:var(--mono); font-size:clamp(11px,1.05vw,14px); letter-spacing:.1em; font-weight:600; color:var(--faint)}
+  .win h3{font-family:var(--head); font-size:clamp(20px,2.1vw,29px); margin:.6vh 0 1.2vh; font-weight:700; line-height:1.05}
+  .win:nth-child(1) h3{color:var(--blue)} .win:nth-child(2) h3{color:var(--violet)} .win:nth-child(3) h3{color:var(--magenta)}
+  .win p{color:var(--muted); font-size:clamp(13.5px,1.4vw,17px); line-height:1.42}
+  .win p code{font-family:var(--mono); color:var(--ink); font-size:.9em}
+
+  /* vision / close (slide 6) */
+  .ask{margin-top:3.8vh; display:flex; flex-direction:column; gap:1.8vh; max-width:58ch}
+  .askrow{display:flex; gap:16px; align-items:flex-start; font-size:clamp(16px,1.7vw,23px); line-height:1.35}
+  .askrow .ic{flex:0 0 auto; width:1.7em; height:1.7em; border-radius:50%; display:grid; place-items:center; font-size:.7em; color:#fff; font-weight:700}
+  .askrow:nth-child(1) .ic{background:var(--teals)}
+  .askrow:nth-child(2) .ic{background:var(--rainbow)}
+  .askrow b{color:var(--ink); font-weight:600}
+  .askrow .m{color:var(--muted)}
+  .closer{
+    margin-top:6vh; font-family:var(--head); font-size:clamp(22px,2.7vw,38px); font-weight:600; letter-spacing:-.01em;
+    display:inline-flex; align-items:center; gap:16px; line-height:1.08;
+  }
+  .closer .dot{width:12px;height:12px;border-radius:50%;background:var(--rainbow); flex:0 0 auto}
+
+  /* chrome */
+  .progress{position:fixed; top:0; left:0; height:3px; background:var(--rainbow); z-index:6; transition:width .42s cubic-bezier(.2,.7,.2,1)}
+  .brand{position:fixed; top:5vh; left:8vw; z-index:5; display:flex; align-items:center; gap:10px; font-family:var(--head); font-weight:700; font-size:clamp(15px,1.4vw,19px); letter-spacing:-.01em; color:var(--ink)}
+  .brand .mark{width:18px; height:18px; border-radius:6px; background:var(--teals)}
+  .timing{position:fixed; top:5vh; right:8vw; z-index:5; font-family:var(--mono); font-size:clamp(11px,1vw,14px); font-weight:500; color:var(--faint); letter-spacing:.06em}
+  .timing b{color:var(--teal)}
+  .meta{position:fixed; bottom:4.4vh; z-index:5; font-family:var(--mono); font-size:clamp(11px,1vw,13.5px); color:var(--faint); letter-spacing:.05em}
+  .meta.left{left:8vw} .meta.right{right:8vw; text-align:right}
+  .navhint{position:fixed; bottom:4.2vh; left:50%; transform:translateX(-50%); z-index:5; color:var(--faint); font-family:var(--mono); font-size:12px; letter-spacing:.04em}
+  .navhint kbd{background:var(--surface2); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:.9em; margin:0 2px; color:var(--muted)}
+  .arrows{position:fixed; bottom:3.8vh; right:8vw; z-index:7; display:flex; gap:10px}
+  .arrows button{
+    width:40px;height:40px;border-radius:50%; background:#fff; color:var(--ink);
+    border:1px solid var(--line); font-size:18px; cursor:pointer; transition:.15s; line-height:1;
+  }
+  .arrows button:hover{border-color:var(--teal); color:var(--teal)}
+
+  /* speaker notes */
+  .notes{
+    position:fixed; left:0; right:0; bottom:0; z-index:8; transform:translateY(101%); transition:transform .3s cubic-bezier(.2,.7,.2,1);
+    background:rgba(255,255,255,.98); border-top:2px solid var(--teal); padding:26px 8vw 30px;
+    box-shadow:0 -18px 40px rgba(11,31,30,.08); backdrop-filter:blur(6px);
+  }
+  .notes.show{transform:none}
+  .notes h4{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--teal); margin-bottom:11px}
+  .notes p{font-size:clamp(15px,1.55vw,19px); color:var(--ink); line-height:1.5; max-width:88ch}
+  .notes .t{color:var(--faint); font-weight:500; margin-left:10px; font-family:var(--mono); font-size:.85em}
+
+  @media (max-width:760px){
+    .flow{flex-direction:column} .arrow{transform:rotate(90deg); padding:.5vh 0}
+    .tl,.proof,.wins{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="brand"><span class="mark"></span> Overmind</div>
+<div class="timing" id="timing"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 — PROBLEM -->
+  <section class="slide active" data-time="0:00–0:40" data-title="The problem"
+    data-notes="Open on the room's reality — half of them have shipped on Lovable. Make the trap concrete: Lovable hides your DB credentials, so you don't even own the thing you built. Land 'terrifying' hard, then pause before flipping to Overmind.">
+    <div class="rstrip"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="eyebrow">The problem</div>
+    <h2>You vibe-coded a hit.<br>Now you're <span class="rgrad">trapped.</span></h2>
+    <div class="beats">
+      <div class="beat"><span class="n">1</span><div><b>Built on Lovable in a weekend, shipped on Supabase.</b> <span class="m">You never thought about infra — that was the whole point.</span></div></div>
+      <div class="beat"><span class="n">2</span><div><b>It scaled. The bill scaled with it.</b> <span class="m">Now the heavy layer — data, realtime, vector — is the bottleneck and the cost.</span></div></div>
+      <div class="beat"><span class="n">3</span><div><b>Lovable hides your DB credentials.</b> <span class="m">Migrating off a live database without losing a row is terrifying — and you're not an infra engineer.</span></div></div>
+    </div>
+  </section>
+
+  <!-- 2 — OVERMIND -->
+  <section class="slide" data-time="0:40–1:20" data-title="Overmind"
+    data-notes="The one idea: Overmind is the agentic front door to Aiven. You never open a dashboard. A swarm graduates your heavy layer onto Aiven, and an always-on CTO agent operates it from then on. Say the three roles fast — Recon/Architect/Operator graduate, CTO stays. The dashboard line is the hook.">
+    <div class="eyebrow">Aiven Overmind</div>
+    <h2>The agentic front door to Aiven.<br><span class="grad">You never open a dashboard.</span></h2>
+    <p class="sub wide">Point Overmind at a Lovable/Supabase app. An agent swarm graduates your heavy layer onto Aiven — then an always-on CTO agent runs it for you.</p>
+    <div class="flow">
+      <div class="step">
+        <div class="tag">Swarm graduates</div>
+        <h3>Data · realtime · vector</h3>
+        <p>Recon reads the app, Architect picks the Aiven stack, the Operator provisions it — all through the MCP.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="tag">Verified cutover</div>
+        <h3>Every row checked</h3>
+        <p>Data moves with row-count parity; realtime re-expressed on Kafka; vector search on pgvector.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="step">
+        <div class="tag">CTO stays on</div>
+        <h3>You just talk to it</h3>
+        <p>An always-on agent reads live Aiven metrics and operates the stack — no console, ever.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 — LIVE DEMO -->
+  <section class="slide" data-time="1:20–3:00" data-title="Live demo"
+    data-notes="SWITCH TO THE PRODUCT. One click, then narrate the screen, four beats in order. Beat 1 is the money shot — a real Opus-4.8 agent calling the real Aiven MCP to spin up a brand-new Postgres, you watch receipts stream. Beats 2-4 are proof it actually works. End by literally talking to the CTO agent on stage — that's the wow.">
+    <div class="demoTag"><span class="live"></span> Live demo · one click</div>
+    <h2 style="margin-top:2.6vh">Watch an agent <span class="grad">build it live.</span></h2>
+    <div class="tl">
+      <div class="chip"><span class="k">1</span><div><h4>Opus 4.8 provisions Aiven</h4><small>One click → an autonomous agent calls the <span class="rgrad">real Aiven MCP</span> and provisions a fresh Aiven Postgres. You watch each <code>aiven_*</code> tool call stream as a receipt.</small></div></div>
+      <div class="chip"><span class="k">2</span><div><h4>Data moves, verified</h4><small>Schema, rows and embeddings land in Aiven PG — the Verifier asserts <span class="green">row-count parity</span> against the source. No trust, proof.</small></div></div>
+      <div class="chip"><span class="k">3</span><div><h4>Realtime + vector, live</h4><small>A real Kafka <code>produce → consume</code> roundtrip, and <code>pgvector</code> similarity search running against the new database on stage.</small></div></div>
+      <div class="chip"><span class="k">4</span><div><h4>You talk to your CTO</h4><small>No dashboard. You ask the always-on Aiven CTO agent a question — and it answers from <span class="rgrad">live metrics</span>.</small></div></div>
+    </div>
+  </section>
+
+  <!-- 4 — WHAT'S REAL -->
+  <section class="slide" data-time="3:00–3:30" data-title="What's real"
+    data-notes="Pivot from demo to credibility — this is the slide that earns trust. Hit each card in one line. The honesty note at the bottom is deliberate and it's a strength: name the one thing that's not live (the generated app isn't deployed — Aiven Apps is LA-only) before a judge can. 'Real where it's real, honest where it isn't.'">
+    <div class="eyebrow">What's real today</div>
+    <h2>No smoke. <span class="grad">Here's the proof.</span></h2>
+    <div class="proof">
+      <div class="pcard"><div class="h"><span class="dot"></span><h4>The agent drives the MCP</h4></div><p>A real Opus-4.8 agent provisions services and creates topics by chaining <code>aiven_*</code> tools itself via <code>mcp_tool_use</code> — every call written to a receipt ledger.</p></div>
+      <div class="pcard"><div class="h"><span class="dot"></span><h4>Data movement + parity</h4></div><p>Real schema, rows and embeddings moved into Aiven Postgres, with verified <code>row-count parity</code> against the source.</p></div>
+      <div class="pcard"><div class="h"><span class="dot"></span><h4>Always-on CTO, real signals</h4></div><p>Reads live <code>pg_stat</code>, runs <code>match_posts()</code> over pgvector, and confirms a <span class="green">nonce-matched</span> Kafka produce → consume.</p></div>
+      <div class="pcard"><div class="h"><span class="dot"></span><h4>Overmind is its own MCP</h4></div><p>Overmind exposes <code>overmind_*</code> tools — so any agent can drive a migration. MCP all the way down.</p></div>
+    </div>
+    <p class="honest"><b>Honest caveat:</b> the generated app itself isn't deployed yet — Aiven Apps is LA-only. Everything else above is live. Real where it's real, honest where it isn't.</p>
+  </section>
+
+  <!-- 5 — WHY IT WINS -->
+  <section class="slide" data-time="3:30–3:50" data-title="Why it wins"
+    data-notes="Map directly to the rubric — say the three category names out loud, judges are scoring on them. MCP depth: the agent chains many aiven_* tools autonomously, MCP is the control plane not a cosmetic call. Autonomy: it decides plan, region and stack itself. Creativity: the operator layer — never open the dashboard — plus agents self-register and drive their own migrations.">
+    <div class="eyebrow">Why it wins · scored on three things</div>
+    <h2>Built for the <span class="rgrad">rubric.</span></h2>
+    <div class="wins">
+      <div class="win"><div class="score">MCP DEPTH · 34</div><h3>Chained, not cosmetic</h3><p>The agent autonomously chains many <code>aiven_*</code> tools — list, plans, create, connect, write, read, topics, produce, metrics. MCP is the control plane, not one decorative call.</p></div>
+      <div class="win"><div class="score">AUTONOMY · 33</div><h3>It decides</h3><p>The swarm picks the <code>plan</code>, the <code>region</code> and the target stack itself — bounded by typed tools and an auditable receipt ledger. Autonomy you can check.</p></div>
+      <div class="win"><div class="score">CREATIVITY · 33</div><h3>The operator layer</h3><p>"Never open the dashboard." Agents <code>self-register</code> for scoped credentials and drive migrations end-to-end — a new way to consume Aiven.</p></div>
+    </div>
+  </section>
+
+  <!-- 6 — VISION + ASK -->
+  <section class="slide" data-time="3:50–4:00" data-title="Vision + ask"
+    data-notes="Land the vision in one breath: every Lovable app's exit ramp to Aiven. Then the concrete ask — enable Aiven Apps in this region so the generated app runs on Aiven too, closing the last gap. Then slow down for the closer line and stop. Thank you.">
+    <div class="rstrip"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="eyebrow">The vision</div>
+    <h2>Every Lovable app's<br><span class="grad">exit ramp to Aiven.</span></h2>
+    <div class="ask">
+      <div class="askrow"><span class="ic">→</span><div><b>The vision:</b> <span class="m">when a vibe-coded app outgrows its starter stack, Overmind is the agent that graduates it onto Aiven — and stays as its CTO.</span></div></div>
+      <div class="askrow"><span class="ic">★</span><div><b>The ask:</b> <span class="m">enable Aiven Apps in our region so the generated app runs on Aiven too — closing the last gap to a fully-Aiven exit ramp.</span></div></div>
+    </div>
+    <div class="closer"><span class="dot"></span> Stop managing infra. Start talking to it.</div>
+  </section>
+
+</div>
+
+<div class="meta left" id="metaLeft">Aiven Challenge · Overmind</div>
+<div class="meta right" id="metaRight"></div>
+<div class="navhint" id="navhint"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>N</kbd> notes · <kbd>F</kbd> fullscreen</div>
+<div class="arrows"><button id="prev" aria-label="previous">‹</button><button id="next" aria-label="next">›</button></div>
+
+<aside class="notes" id="notes"><h4>Speaker note <span class="t" id="noteTime"></span></h4><p id="noteBody"></p></aside>
+
+<script>
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var i=0;
+  var progress=document.getElementById('progress');
+  var timing=document.getElementById('timing');
+  var metaRight=document.getElementById('metaRight');
+  var notes=document.getElementById('notes');
+  var noteBody=document.getElementById('noteBody');
+  var noteTime=document.getElementById('noteTime');
+  var navhint=document.getElementById('navhint');
+
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){s.classList.toggle('active',k===i)});
+    progress.style.width=((i+1)/slides.length*100)+'%';
+    var s=slides[i];
+    timing.innerHTML='<b>'+(s.dataset.time||'')+'</b>';
+    metaRight.textContent=(s.dataset.title||'')+'  ·  '+(i+1)+' / '+slides.length;
+    noteBody.textContent=s.dataset.notes||'';
+    noteTime.textContent=s.dataset.time||'';
+    navhint.style.opacity = i>0 ? '0' : '.85';
+  }
+  function next(){show(i+1)} function prev(){show(i-1)}
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();next()}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    else if(e.key.toLowerCase()==='n'){notes.classList.toggle('show')}
+    else if(e.key.toLowerCase()==='f'){if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen()}
+    else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(slides.length-1)}
+  });
+  document.getElementById('next').addEventListener('click',function(e){e.stopPropagation();next()});
+  document.getElementById('prev').addEventListener('click',function(e){e.stopPropagation();prev()});
+  document.getElementById('deck').addEventListener('click',function(e){ if(!e.target.closest('.arrows,.notes')) next(); });
+  show(0);
+</script>
+</body>
+</html>

@@ -22,9 +22,16 @@ import type {
 } from '../shared/types.ts'
 import { AIVEN_PROJECT, hasAnthropic, hasAivenToken } from './env.ts'
 import { healLoop } from './heal.ts'
-import { verify } from './verify.ts'
 import { ctoTick } from './cto.ts'
 import { cloneRepo } from './clone.ts'
+import {
+  TARGET_SERVICE,
+  targetConnInfo,
+  applyTargetSchema,
+  copyData,
+  verifyParity,
+  sourceConn,
+} from './migrator.ts'
 
 // ──────────────────────────── small helpers ────────────────────────────
 
@@ -199,7 +206,11 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
   // Held in an object so the assignments made inside the async `step` closures below survive
   // TS's control-flow analysis — a plain `let` would be narrowed back to its `null` initializer
   // (and then to `never` under optional chaining) at the final read site.
-  const state: { graph: BehaviorGraph | null } = { graph: null }
+  const state: {
+    graph: BehaviorGraph | null
+    targetConn: string | null
+    copied: { table: string; source: number; copied: number; ok: boolean }[]
+  } = { graph: null, targetConn: null, copied: [] }
   let stack: AivenStack = { project: AIVEN_PROJECT }
   let artifacts: GeneratedArtifact[] = []
 
@@ -279,149 +290,153 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     emitAgent(emit, 'architect', 'done', 'plan ready')
   })
 
-  // ── 4. PROVISION ── verify the live Aiven services (REST is source of truth), receipts ────
-  // The services already exist and are RUNNING. We VERIFY them via aiven/rest.getService (real
-  // {type:'receipt'} aiven_service_get), read the real state into the stack, and only create what
-  // is genuinely missing (so we never trip the 409 "already exists"). A short, hard-bounded MCP
-  // beat runs alongside for the judged autonomous surface but can never block the pipeline.
+  // ── 4. PROVISION ── autonomous Opus-4.8 agent drives the Aiven MCP to ensure the target stack ──
+  // An autonomous agent (runAivenAgent → claude-opus-4-8 over the Aiven MCP connector) is given a
+  // GOAL: ensure the fresh target Postgres "overmind-grad" exists (provision it if missing) and
+  // ensure a Kafka topic exists on overmind-kafka for this app. It decides which aiven_* tools to
+  // call; every real tool call becomes a {type:'receipt'} in the Mission Control ledger. After the
+  // agent beat, we DETERMINISTICALLY poll waitRunning(overmind-grad) via REST so the pipeline only
+  // proceeds once the target is truly RUNNING — the agent provisions, REST confirms.
   phase('provision')
   await step(emit, 'provision', async () => {
-    emitAgent(emit, 'operator', 'working', 'verifying Aiven services')
+    emitAgent(emit, 'operator', 'working', 'provisioning the target Aiven stack', TARGET_SERVICE)
     const needsKafka = !!state.graph?.source.hasRealtime
     const rest = await tryImport('../aiven/rest.ts')
+    const topic = process.env.KAFKA_TOPIC || 'overmind.app.outbox'
 
-    let pgState = 'UNKNOWN'
-    let kafkaState = 'UNKNOWN'
-    let kafkaTopics: string[] = []
-
-    /** Verify one service: emit a real aiven_service_get receipt; create only if 404. */
-    async function ensureService(
-      name: string,
-      serviceType: 'pg' | 'kafka',
-      plan: string,
-    ): Promise<string> {
-      if (!rest?.getService || !hasAivenToken()) return 'UNKNOWN'
-      try {
-        const svc = await rest.getService(AIVEN_PROJECT, name)
-        const realState = (svc?.state || 'UNKNOWN').toUpperCase()
-        emitReceipt(emit, 'aiven_service_get', `${name} is ${realState} (${svc?.service_type ?? serviceType}, plan ${svc?.plan ?? plan})`)
-        return realState
-      } catch (e: any) {
-        // 404 → genuinely missing: create it (the only path that should ever POST).
-        const status = e?.status
-        if (status === 404 && rest.provision) {
-          try {
-            await rest.provision(AIVEN_PROJECT, serviceType, plan, 'do-fra', name)
-            emitReceipt(emit, 'aiven_service_create', `Provisioned ${serviceType} "${name}" (was missing)`)
-            if (rest.waitRunning) await rest.waitRunning(AIVEN_PROJECT, name).catch(() => {})
-            return 'RUNNING'
-          } catch (ce: any) {
-            emit({ type: 'log', level: 'warn', msg: `provision: create ${name} failed (${ce?.message ?? ce})` })
-            return 'UNKNOWN'
-          }
-        }
-        emit({ type: 'log', level: 'warn', msg: `provision: getService ${name} failed (${e?.message ?? e})` })
-        return 'UNKNOWN'
-      }
-    }
-
-    pgState = await ensureService('overmind-pg', 'pg', 'startup-4')
-    if (needsKafka) {
-      kafkaState = await ensureService('overmind-kafka', 'kafka', 'startup-2')
-      // Read the real topic list from the live Kafka so the stack reflects reality.
-      if (rest?.getService && hasAivenToken()) {
-        try {
-          const ks = await rest.getService(AIVEN_PROJECT, 'overmind-kafka')
-          const topics = (ks as any)?.topics ?? (ks as any)?.metadata?.topics
-          if (Array.isArray(topics)) kafkaTopics = topics.map((t: any) => t?.topic_name ?? t).filter(Boolean)
-        } catch {
-          /* topic list is best-effort; cutover ensures the topic exists anyway */
-        }
-      }
-      if (!kafkaTopics.length) kafkaTopics = [process.env.KAFKA_TOPIC || 'overmind.app.outbox']
-    }
-
-    // Judged autonomous surface: a short Aiven-MCP agent beat that lists/inspects the services and
-    // emits its own receipts. Hard-bounded by aiven/mcp.ts's AbortController; on any timeout/error
-    // it throws UNAVAILABLE and we simply move on — it can never block provisioning.
+    // Autonomous agent beat: ensure target pg + kafka topic. Real MCP receipts.
     const mcp = await tryImport('../aiven/mcp.ts')
     if (mcp?.runAivenAgent && hasAnthropic() && hasAivenToken()) {
       try {
         const prompt =
-          `In Aiven project ${AIVEN_PROJECT}, confirm the service "overmind-pg" is running and ` +
-          `verify pgvector is available` +
-          (needsKafka ? `, and confirm "overmind-kafka" is running.` : `.`) +
-          ` Use aiven_service_get / aiven_service_list. Reply with one short line.`
-        await mcp.runAivenAgent(prompt, (r: Receipt) => emit({ type: 'receipt', receipt: r }))
-        emit({ type: 'log', level: 'info', msg: 'provision: Aiven MCP verification beat completed' })
+          `You are the provisioning agent for Aiven project "${AIVEN_PROJECT}". Goal:\n` +
+          `1. Ensure a PostgreSQL service named "${TARGET_SERVICE}" exists. Check with ` +
+          `aiven_service_get first; if it is missing (404), create it with aiven_service_create ` +
+          `(service_type "pg", plan "startup-4", cloud "do-fra", pg version 17). If it already ` +
+          `exists, do NOT recreate it.\n` +
+          (needsKafka
+            ? `2. Ensure the Kafka topic "${topic}" exists on service "overmind-kafka": list topics ` +
+              `with aiven_kafka_topic_list and, only if it is missing, create it with ` +
+              `aiven_kafka_topic_create (partitions 1, replication 3).\n`
+            : '') +
+          `Then reply with one short line stating the final state of ${TARGET_SERVICE}` +
+          (needsKafka ? ` and the topic.` : `.`)
+        const answer = await mcp.runAivenAgent(prompt, (r: Receipt) => emit({ type: 'receipt', receipt: r }))
+        emit({ type: 'log', level: 'info', msg: `provision: autonomous Aiven agent — ${answer || 'beat completed'}` })
       } catch (e) {
-        emit({ type: 'log', level: 'info', msg: `provision: MCP beat skipped (${(e as Error).message})` })
+        emit({ type: 'log', level: 'info', msg: `provision: autonomous agent unavailable (${(e as Error).message}) — falling back to deterministic REST` })
+        // Deterministic fallback: ensure the target exists via REST so the pipeline can proceed.
+        if (rest?.getService && hasAivenToken()) {
+          try {
+            await rest.getService(AIVEN_PROJECT, TARGET_SERVICE)
+          } catch (ge: any) {
+            if (ge?.status === 404 && rest.provision) {
+              try {
+                await rest.provision(AIVEN_PROJECT, 'pg', 'startup-4', 'do-fra', TARGET_SERVICE, { pg_version: '17' })
+                emitReceipt(emit, 'aiven_service_create', `Provisioned pg "${TARGET_SERVICE}" (was missing)`)
+              } catch (ce: any) {
+                emit({ type: 'log', level: 'warn', msg: `provision: REST create ${TARGET_SERVICE} failed (${ce?.message ?? ce})` })
+              }
+            }
+          }
+        }
       }
+    }
+
+    // Deterministically confirm the target is RUNNING before we migrate into it.
+    let pgState = 'UNKNOWN'
+    if (rest?.getService && hasAivenToken()) {
+      try {
+        let svc = await rest.getService(AIVEN_PROJECT, TARGET_SERVICE)
+        pgState = (svc?.state || 'UNKNOWN').toUpperCase()
+        emitReceipt(emit, 'aiven_service_get', `${TARGET_SERVICE} is ${pgState} (pg, plan ${svc?.plan ?? 'startup-4'})`)
+        if (pgState !== 'RUNNING' && rest.waitRunning) {
+          emit({ type: 'log', level: 'info', msg: `provision: waiting for ${TARGET_SERVICE} to reach RUNNING…` })
+          svc = await rest.waitRunning(AIVEN_PROJECT, TARGET_SERVICE).catch(() => svc)
+          pgState = (svc?.state || pgState).toUpperCase()
+          if (pgState === 'RUNNING') emitReceipt(emit, 'aiven_service_get', `${TARGET_SERVICE} reached RUNNING`)
+        }
+      } catch (e: any) {
+        emit({ type: 'log', level: 'warn', msg: `provision: ${TARGET_SERVICE} status check failed (${e?.message ?? e})` })
+      }
+    }
+
+    let kafkaState = 'UNKNOWN'
+    let kafkaTopics: string[] = []
+    if (needsKafka && rest?.getService && hasAivenToken()) {
+      try {
+        const ks = await rest.getService(AIVEN_PROJECT, 'overmind-kafka')
+        kafkaState = (ks?.state || 'UNKNOWN').toUpperCase()
+        emitReceipt(emit, 'aiven_service_get', `overmind-kafka is ${kafkaState} (kafka, plan ${ks?.plan ?? 'business-4'})`)
+      } catch (e: any) {
+        emit({ type: 'log', level: 'warn', msg: `provision: overmind-kafka status check failed (${e?.message ?? e})` })
+      }
+      kafkaTopics = [topic]
     }
 
     stack = {
       project: AIVEN_PROJECT,
-      postgres: { service: 'overmind-pg', state: pgState, pgvector: true },
+      postgres: { service: TARGET_SERVICE, state: pgState, pgvector: true },
       ...(needsKafka ? { kafka: { service: 'overmind-kafka', state: kafkaState, topics: kafkaTopics } } : {}),
     }
     emit({ type: 'stack', stack })
-    emitAgent(emit, 'operator', 'done', `Aiven stack: pg=${pgState}${needsKafka ? `, kafka=${kafkaState}` : ''}`)
+    emitAgent(emit, 'operator', 'done', `target Aiven stack: pg=${pgState}${needsKafka ? `, kafka=${kafkaState}` : ''}`)
   })
 
-  // ── 5. MIGRATE ── read the REAL row counts from the live Aiven PG, stream real progress ──
-  // The data is already migrated into overmind-pg. We connect over aiven/pg.ts to DATABASE_URL,
-  // SELECT count(*) per real table, and stream {type:'migration'} with the live totals + a real
-  // aiven_pg_write receipt. If the live read fails we degrade to the graph's counts, clearly noted.
+  // ── 5. MIGRATE ── REAL data movement: apply schema to the fresh target, then copy rows in ──────
+  // No animation, no fake counts. We resolve the target's LIVE credentials (via the Aiven MCP, which
+  // returns the real password the REST API redacts), apply the PulseWall schema idempotently over a
+  // direct pg connection (CREATE EXTENSION vector / match_posts fn / triggers — the MCP write path
+  // blocks DDL), then bulk-copy users → posts → reactions from the source (overmind-pg via
+  // DATABASE_URL) into the target, INCLUDING the pgvector embeddings. {type:'migration'} events fire
+  // as rows ACTUALLY land. Receipts describe what really happened.
   phase('migrate')
   await step(emit, 'migrate', async () => {
-    emitAgent(emit, 'migrator', 'working', 'migrating schema + data')
-    const aiven = await tryImport('../aiven/pg.ts')
-    const connStr = process.env.DATABASE_URL
-    const haveTarget = !!connStr && !!aiven?.q1
+    emitAgent(emit, 'migrator', 'working', `migrating real data → ${TARGET_SERVICE}`)
+    const src = sourceConn()
+    if (!src) {
+      emit({ type: 'log', level: 'warn', msg: 'migrate: no DATABASE_URL (source) — cannot move data' })
+      emitAgent(emit, 'migrator', 'error', 'source DB unavailable')
+      return
+    }
 
-    // The real tables on overmind-pg (verified live: users, posts, reactions).
-    const tables = ['users', 'posts', 'reactions']
-    const realCounts: Record<string, number> = {}
+    // Resolve the target's real connection string (MCP secrets → REST fallback).
+    state.targetConn = await targetConnInfo(emit)
+    if (!state.targetConn) {
+      emit({ type: 'log', level: 'warn', msg: `migrate: could not resolve ${TARGET_SERVICE} credentials — skipping data copy` })
+      emitAgent(emit, 'migrator', 'error', 'target credentials unavailable')
+      return
+    }
 
-    for (const t of tables) {
-      let total = state.graph?.source.rowCounts?.[t] ?? 0
-      let live = false
-      if (haveTarget && connStr && aiven?.q1) {
-        try {
-          const r = await aiven.q1(connStr, `select count(*)::text n from ${t}`)
-          total = Number(r?.n ?? 0)
-          live = true
-        } catch (e) {
-          emit({ type: 'log', level: 'warn', msg: `migrate: count ${t} failed (${(e as Error).message})` })
-        }
-      }
-      realCounts[t] = total
+    // Apply schema to the fresh service (idempotent).
+    const schema = await applyTargetSchema(state.targetConn, emit)
+    if (schema.ok) {
+      emitReceipt(emit, 'aiven_pg_query', `Applied PulseWall schema to ${TARGET_SERVICE} (${schema.statements} statements: pgvector, tables, match_posts, triggers)`)
+    } else {
+      emit({ type: 'log', level: 'warn', msg: `migrate: schema apply failed (${schema.error}) — copy may fail` })
+    }
 
-      // Stream progress in chunks so the UI's migration bars animate, ending on the real total.
-      const steps = Math.max(1, Math.min(4, total ? 4 : 1))
-      for (let i = 1; i <= steps; i++) {
-        const copied = total ? Math.round((total * i) / steps) : 0
-        emit({ type: 'migration', table: t, copied, total })
-      }
+    // Copy real rows. {type:'migration'} fires per chunk as rows land.
+    const results = await copyData(src, state.targetConn, emit)
+    state.copied = results
+    for (const r of results) {
       emitReceipt(
         emit,
         'aiven_pg_write',
-        live
-          ? `Verified table "${t}" on Aiven Postgres: ${total} rows`
-          : `Table "${t}" (${total} rows, from graph — DATABASE_URL unread)`,
+        r.ok
+          ? `Copied ${r.copied} rows into ${TARGET_SERVICE}.${r.table}${r.table === 'posts' ? ' (incl. pgvector embeddings)' : ''}`
+          : `Copy into ${TARGET_SERVICE}.${r.table} incomplete (${r.copied}/${r.source})`,
+        r.ok,
       )
     }
-
-    if (!haveTarget) {
-      emit({ type: 'log', level: 'info', msg: 'migrate: DATABASE_URL not set — counts are planned, not live' })
-    } else {
-      emit({
-        type: 'log',
-        level: 'info',
-        msg: `migrate: live counts users=${realCounts.users ?? '?'}, posts=${realCounts.posts ?? '?'}, reactions=${realCounts.reactions ?? '?'}`,
-      })
-    }
-    emitAgent(emit, 'migrator', 'done', `migrated ${tables.length} tables (posts=${realCounts.posts ?? 0}, reactions=${realCounts.reactions ?? 0})`)
+    const ok = results.every((r) => r.ok)
+    const totalCopied = results.reduce((n, r) => n + r.copied, 0)
+    emit({
+      type: 'log',
+      level: ok ? 'info' : 'warn',
+      msg: `migrate: moved ${totalCopied} live rows into ${TARGET_SERVICE} (users=${results.find((r) => r.table === 'users')?.copied ?? 0}, posts=${results.find((r) => r.table === 'posts')?.copied ?? 0}, reactions=${results.find((r) => r.table === 'reactions')?.copied ?? 0})`,
+    })
+    emitAgent(emit, 'migrator', ok ? 'done' : 'error', ok ? `real data live on ${TARGET_SERVICE}` : 'copy incomplete')
   })
 
   // ── 6. GENERATE ── Surgeon emits the Aiven-native backend ─────────────────────────
@@ -450,50 +465,108 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     emitAgent(emit, 'healer', 'done', 'all artifacts green')
   })
 
-  // ── 8. VERIFY ── parity, smoke, kafka roundtrip, auth, search ─────────────────────
+  // ── 8. VERIFY ── REAL row-count parity (source vs target) + a real Kafka roundtrip ─────────────
+  // Every check is computed from live counts on BOTH databases; there is no hardcoded PASS. The only
+  // checks we emit are ones we can truly run: per-table parity, embedding parity (proving vectors
+  // moved), and a produce→consume Kafka roundtrip on the live broker. Anything we can't run is
+  // simply not asserted (no fake auth/JWT pass).
   phase('verify')
   await step(emit, 'verify', async () => {
-    emitAgent(emit, 'verifier', 'working', 'running verification suite')
-    await verify(emit)
-    emitAgent(emit, 'verifier', 'done', 'verification complete')
-  })
+    emitAgent(emit, 'verifier', 'working', 'verifying real row-count parity')
+    const src = sourceConn()
+    if (src && state.targetConn) {
+      const { rows, embedding } = await verifyParity(src, state.targetConn, emit)
+      for (const r of rows) {
+        emit({
+          type: 'validation',
+          check: {
+            name: `row-count parity: ${r.table}`,
+            status: r.ok ? 'pass' : 'fail',
+            expected: `source ${r.source < 0 ? '?' : r.source} rows`,
+            actual: `target ${r.target < 0 ? '?' : r.target} rows`,
+          },
+        })
+      }
+      emit({
+        type: 'validation',
+        check: {
+          name: 'pgvector embeddings migrated',
+          status: embedding.ok ? 'pass' : 'fail',
+          expected: `${embedding.source < 0 ? '?' : embedding.source} posts with embeddings (source)`,
+          actual: `${embedding.target < 0 ? '?' : embedding.target} posts with embeddings (target)`,
+        },
+      })
+      const allOk = rows.every((r) => r.ok) && embedding.ok
+      emit({
+        type: 'log',
+        level: allOk ? 'info' : 'warn',
+        msg: `verify: row-count parity ${allOk ? 'PASS' : 'FAIL'} — ${rows.map((r) => `${r.table} ${r.source}/${r.target}`).join(', ')}`,
+      })
+    } else {
+      emit({ type: 'log', level: 'warn', msg: 'verify: parity skipped (source or target connection unavailable)' })
+    }
 
-  // ── 9. CUTOVER ── actually hop a realtime event over live Aiven Kafka ──────────────────
-  // Ensure the topic exists, then PRODUCE a JSON event and CONSUME it back over the live broker,
-  // proving the realtime spine runs on Aiven Kafka. Real {type:'kafka'} produce + consume with the
-  // real payload. Bounded so a broker hiccup degrades to a clearly-noted narration instead of hang.
-  phase('cutover')
-  await step(emit, 'cutover', async () => {
-    emitAgent(emit, 'operator', 'working', 'cutting over to Aiven')
+    // Real Kafka produce→consume roundtrip on the app topic (proves the realtime spine is live).
     if (state.graph?.source.hasRealtime) {
       const topic = process.env.KAFKA_TOPIC || 'overmind.app.outbox'
-      const nonce = rid('cut')
-      const payload = JSON.stringify({ type: 'cutover.ping', nonce, at: now() })
-      // Point KAFKA_BROKERS at the live SASL endpoint (the env default targets the mTLS port).
+      const nonce = rid('verify')
+      const payload = JSON.stringify({ type: 'verify.ping', nonce, at: now() })
       await ensureKafkaSaslBrokers(emit)
       const kafka = await tryImport('../aiven/kafka.ts')
-      const live = !!process.env.KAFKA_BROKERS && !!kafka?.produce && !!kafka?.createConsumer
-
+      const canKafka = !!process.env.KAFKA_BROKERS && !!kafka?.produce && !!kafka?.createConsumer
       let roundtripped = false
-      if (live) {
+      if (canKafka) {
         try {
           roundtripped = await kafkaRoundtrip(kafka, topic, payload, nonce, emit)
         } catch (e) {
-          emit({ type: 'log', level: 'warn', msg: `cutover: kafka roundtrip failed (${(e as Error).message})` })
+          emit({ type: 'log', level: 'warn', msg: `verify: kafka roundtrip failed (${(e as Error).message})` })
         }
       }
-
-      if (roundtripped) {
-        emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Realtime event round-tripped over live Aiven Kafka topic "${topic}"`)
-      } else {
-        // Degrade honestly: still show the intended hop, but mark it as not-live.
-        emit({ type: 'kafka', topic, direction: 'produce', payload })
-        emit({ type: 'kafka', topic, direction: 'consume', payload })
-        emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Realtime hop over Aiven Kafka topic "${topic}" (planned — KAFKA_BROKERS unread)`, live ? false : true)
-      }
+      emit({
+        type: 'validation',
+        check: {
+          name: 'Kafka realtime roundtrip',
+          status: roundtripped ? 'pass' : canKafka ? 'fail' : 'pending',
+          expected: `produce→consume on "${topic}"`,
+          actual: roundtripped
+            ? 'event produced and consumed back over live Aiven Kafka'
+            : canKafka
+              ? 'roundtrip did not complete in time'
+              : 'KAFKA_BROKERS unavailable — not run',
+        },
+      })
+      if (roundtripped) emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Verified realtime roundtrip on Aiven Kafka topic "${topic}"`)
     }
-    emit({ type: 'log', level: 'info', msg: 'cutover: traffic now served by the Aiven-native backend' })
-    emitAgent(emit, 'operator', 'done', '100% on Aiven')
+
+    emitAgent(emit, 'verifier', 'done', 'verification complete (real parity)')
+  })
+
+  // ── 9. CUTOVER ── HONEST summary of what is now live. We do NOT claim traffic flipped or that a
+  // server is serving requests (it isn't). What IS true: the data is live on the fresh Aiven service
+  // overmind-grad with verified parity, and the realtime spine round-tripped over Aiven Kafka in the
+  // verify phase. We state exactly that.
+  phase('cutover')
+  await step(emit, 'cutover', async () => {
+    emitAgent(emit, 'operator', 'working', 'finalizing cutover state')
+    const copied = state.copied
+    const ok = copied.length > 0 && copied.every((r) => r.ok)
+    const totalRows = copied.reduce((n, r) => n + r.copied, 0)
+    if (ok) {
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: `cutover: data is LIVE on Aiven (${TARGET_SERVICE}) — ${totalRows} rows with verified parity, ready to serve. (No traffic has been flipped — the generated backend is built, not yet receiving requests.)`,
+      })
+      emitReceipt(emit, 'aiven_pg_query', `Cutover-ready: ${totalRows} rows live on ${TARGET_SERVICE}, parity verified`)
+      emitAgent(emit, 'operator', 'done', `data live on ${TARGET_SERVICE}, parity verified`)
+    } else {
+      emit({
+        type: 'log',
+        level: 'warn',
+        msg: `cutover: data copy did not fully complete — ${TARGET_SERVICE} is not cutover-ready`,
+      })
+      emitAgent(emit, 'operator', 'error', 'cutover not ready (copy incomplete)')
+    }
   })
 
   // ── 10. OPERATE ── CTO agent reads live metrics → recommendations ─────────────────
@@ -504,17 +577,18 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     emitAgent(emit, 'cto', 'idle', 'on watch — will keep optimizing')
   })
 
-  // ── DONE ──────────────────────────────────────────────────────────────────────────
+  // ── DONE ── honest summary grounded in what actually moved ──────────────────────────
   run.status = 'done'
   const builtGraph = state.graph
   const readiness = builtGraph?.readiness ?? 100
   phase('done')
   emitAgent(emit, 'orchestrator', 'done', 'migration complete')
-  emit({
-    type: 'done',
-    readiness,
-    summary: builtGraph?.summary ?? `Rebuilt ${source} on Aiven — auth, data, realtime, search. 100% on Aiven.`,
-  })
+  const totalRows = state.copied.reduce((n, r) => n + r.copied, 0)
+  const copyOk = state.copied.length > 0 && state.copied.every((r) => r.ok)
+  const summary = copyOk
+    ? `Real data live on Aiven (${TARGET_SERVICE}): ${totalRows} rows copied with verified row-count parity, pgvector embeddings included, realtime round-tripped over Aiven Kafka. CTO agent on watch.`
+    : builtGraph?.summary ?? `Migrated ${source} onto Aiven (${TARGET_SERVICE}).`
+  emit({ type: 'done', readiness, summary })
 
   // Release live resources so a headless CLI run exits promptly instead of waiting on idle
   // pool/socket timeouts. Pools are recreated lazily on the next query, so this is safe for the

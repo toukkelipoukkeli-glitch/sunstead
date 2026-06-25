@@ -79,7 +79,7 @@ export function SourceCard({
 
       <div className="source-live">
         <Check size={15} />
-        Source still serving — zero downtime migration
+        Source still serving — your Lovable app keeps shipping
       </div>
     </div>
   )

@@ -195,11 +195,11 @@ const PHASE_HEADLINE: Record<RunPhase, string> = {
   provision: 'Provisioning Aiven via MCP',
   migrate: 'Migrating schema + data + vectors',
   generate: 'Generating the Aiven-native backend',
-  heal: 'Self-healing until every test is green',
+  heal: 'Generating + checking the backend',
   verify: 'Verifying parity, auth, realtime & search',
-  cutover: 'Cutting over to Aiven',
+  cutover: 'Pointing your data + realtime at Aiven',
   operate: 'Operating live — CTO on watch',
-  done: 'Graduated to Aiven — heavy layer live, CTO on watch',
+  done: 'Your data + realtime live on Aiven — CTO on watch',
   error: 'Run halted — see log',
 }
 
