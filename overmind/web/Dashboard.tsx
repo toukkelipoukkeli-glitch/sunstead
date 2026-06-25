@@ -14,17 +14,10 @@ import type {
 } from '../shared/types.ts'
 import { connectStream, startRun } from './api.ts'
 import { Stepper } from './components/Stepper.tsx'
-
-import { SourceCard } from './components/SourceCard.tsx'
-import { SwarmGrid } from './components/SwarmGrid.tsx'
-import { BehaviorGraphPanel } from './components/BehaviorGraphPanel.tsx'
-import { FeedPanel, type LogEntry } from './components/FeedPanel.tsx'
-import { AivenServices } from './components/AivenServices.tsx'
-import { MigrationProgress, type TableProgress } from './components/MigrationProgress.tsx'
-import { KafkaTicker, type KafkaEvent } from './components/KafkaTicker.tsx'
-import { ValidationChecklist } from './components/ValidationChecklist.tsx'
-import { CostCard, type CostState } from './components/CostCard.tsx'
-import { CtoPanel } from './components/CtoPanel.tsx'
+import type { LogEntry } from './components/FeedPanel.tsx'
+import type { TableProgress } from './components/MigrationProgress.tsx'
+import type { KafkaEvent } from './components/KafkaTicker.tsx'
+import type { CostState } from './components/CostCard.tsx'
 import {
   Logo,
   Bolt,
@@ -40,9 +33,15 @@ import {
   Activity,
   Rocket,
   Cloud,
+  FileCode,
+  Stream,
 } from './icons.tsx'
 
 // ───────────────────────── dashboard state ─────────────────────────
+// NOTE: the reducer below is the contract — it is a pure switch over every
+// SwarmEvent.type, so the whole UI stays a deterministic function of the SSE
+// stream. We keep the full state shape even though the focused UI only renders
+// a slice of it: the stream is unchanged, only the *render* is trimmed.
 interface DashState {
   run: MigrationRun | null
   phase: RunPhase | null
@@ -174,20 +173,7 @@ function reduce(s: DashState, e: SwarmEvent): DashState {
   }
 }
 
-// ───────────────────────── phase rail metadata ─────────────────────────
-const PHASES: { key: RunPhase; label: string }[] = [
-  { key: 'recon', label: 'Recon' },
-  { key: 'graph', label: 'Graph' },
-  { key: 'plan', label: 'Plan' },
-  { key: 'provision', label: 'Provision' },
-  { key: 'migrate', label: 'Migrate' },
-  { key: 'generate', label: 'Generate' },
-  { key: 'heal', label: 'Heal' },
-  { key: 'verify', label: 'Verify' },
-  { key: 'cutover', label: 'Cutover' },
-  { key: 'operate', label: 'Operate' },
-]
-
+// ───────────────────────── phase metadata ─────────────────────────
 const PHASE_HEADLINE: Record<RunPhase, string> = {
   recon: 'Scanning the source backend',
   graph: 'Mapping the behavior graph',
@@ -199,50 +185,26 @@ const PHASE_HEADLINE: Record<RunPhase, string> = {
   verify: 'Verifying parity, auth, realtime & search',
   cutover: 'Pointing your data + realtime at Aiven',
   operate: 'Operating live — CTO on watch',
-  done: 'Your data + realtime live on Aiven — CTO on watch',
+  done: 'Your data + realtime live on Aiven',
   error: 'Run halted — see log',
 }
 
-// A crisp line icon per phase — gives the headline the icon-rich Aiven feel.
 const PHASE_ICON: Record<RunPhase, ReactNode> = {
-  recon: <Search size={18} />,
-  graph: <Network size={18} />,
-  plan: <Layers size={18} />,
-  provision: <Server size={18} />,
-  migrate: <Database size={18} />,
-  generate: <Sparkle size={18} />,
-  heal: <Shield size={18} />,
-  verify: <Check size={18} />,
-  cutover: <ArrowRight size={18} />,
-  operate: <Activity size={18} />,
-  done: <Check size={18} />,
-  error: <Bolt size={18} />,
+  recon: <Search size={16} />,
+  graph: <Network size={16} />,
+  plan: <Layers size={16} />,
+  provision: <Server size={16} />,
+  migrate: <Database size={16} />,
+  generate: <Sparkle size={16} />,
+  heal: <Shield size={16} />,
+  verify: <Check size={16} />,
+  cutover: <ArrowRight size={16} />,
+  operate: <Activity size={16} />,
+  done: <Check size={16} />,
+  error: <Bolt size={16} />,
 }
 
-function PhaseRail({ phase }: { phase: RunPhase | null }) {
-  const curIdx = phase ? PHASES.findIndex((p) => p.key === phase) : -1
-  return (
-    <div className="phase-rail">
-      {PHASES.map((p, i) => {
-        const cls =
-          phase === 'done'
-            ? 'past'
-            : i === curIdx
-              ? 'cur'
-              : curIdx > -1 && i < curIdx
-                ? 'past'
-                : ''
-        return (
-          <span key={p.key} className={`phase-pip ${cls}`}>
-            {p.label}
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
-// ───────────────────────── derived live metrics (the ribbon) ─────────────────────────
+// ───────────────────────── elapsed clock ─────────────────────────
 function useElapsed(startedAt: string | undefined, stopped: boolean): string {
   const [, tick] = useReducer((n: number) => n + 1, 0)
   useEffect(() => {
@@ -257,16 +219,110 @@ function useElapsed(startedAt: string | undefined, stopped: boolean): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function Metric({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+// ───────────────────────── the hero feed ─────────────────────────
+// One unified, chronological stream of what the agents are ACTUALLY doing:
+// real Aiven/GitHub tool-call receipts interleaved with key logs. Newest at
+// the bottom (it reads like a terminal), capped for a long demo.
+interface FeedRow {
+  key: string
+  kind: 'receipt' | 'log'
+  ok: boolean
+  level?: 'info' | 'warn' | 'error'
+  action?: string // receipt action verb, e.g. aiven_service_create
+  text: string
+  ts?: string
+  icon: ReactNode
+}
+
+// A crisp icon per receipt action so the receipts read at a glance.
+function receiptIcon(action: string): ReactNode {
+  if (action.includes('service_create') || action.includes('service')) return <Server size={15} />
+  if (action.includes('kafka')) return <Stream size={15} />
+  if (action.includes('pg_') || action.includes('postgres') || action.includes('migration'))
+    return <Database size={15} />
+  if (action.includes('github') || action.includes('pull_request')) return <FileCode size={15} />
+  if (action.includes('vector') || action.includes('integration')) return <Sparkle size={15} />
+  if (action.includes('verify') || action.includes('validation')) return <Shield size={15} />
+  return <Check size={15} />
+}
+
+function fmtTs(ts?: string): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+}
+
+function HeroFeed({ receipts, logs }: { receipts: Receipt[]; logs: LogEntry[] }) {
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  // receipts + logs are stored newest-first; build a chronological list
+  // (oldest → newest) so the newest lands at the bottom like a console.
+  const rRows: FeedRow[] = receipts.map((r) => ({
+    key: `r-${r.id}`,
+    kind: 'receipt',
+    ok: r.ok,
+    action: r.action,
+    text: r.summary,
+    ts: r.ts,
+    icon: receiptIcon(r.action),
+  }))
+  const lRows: FeedRow[] = logs.map((l) => ({
+    key: `l-${l.id}`,
+    kind: 'log',
+    ok: l.level !== 'error',
+    level: l.level,
+    text: l.msg,
+    ts: l.ts,
+    icon: l.level === 'error' ? <Bolt size={15} /> : <Activity size={15} />,
+  }))
+
+  // merge + sort ascending by timestamp; rows without ts keep insertion order
+  const rows = [...rRows, ...lRows].sort((a, b) => {
+    const ta = a.ts ? new Date(a.ts).getTime() : 0
+    const tb = b.ts ? new Date(b.ts).getTime() : 0
+    return ta - tb
+  })
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [rows.length])
+
   return (
-    <div className={`ribbon-metric ${tone ?? ''}`}>
-      <div className="rm-n">{value}</div>
-      <div className="rm-l">{label}</div>
+    <div className="hero">
+      <div className="hero-h">
+        <h2>
+          <span className="hero-live" /> What the agents are doing
+        </h2>
+        <span className="hero-meta">
+          {receipts.filter((r) => r.ok).length}/{receipts.length || 0} real tool-calls
+        </span>
+      </div>
+      <div className="hero-feed">
+        {rows.length === 0 && (
+          <div className="hero-empty pulse-wait">
+            Every real Aiven &amp; GitHub tool-call the agents make lands here, live…
+          </div>
+        )}
+        {rows.map((row) => (
+          <div className={`hrow ${row.kind} ${row.ok ? '' : 'bad'} ${row.level ?? ''}`} key={row.key}>
+            <span className="hrow-ico">{row.icon}</span>
+            {row.action ? (
+              <span className="hrow-action mono">{row.action}</span>
+            ) : (
+              <span className="hrow-tag">log</span>
+            )}
+            <span className="hrow-text">{row.text}</span>
+            <span className="hrow-ts mono">{fmtTs(row.ts)}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
     </div>
   )
 }
 
-// ───────────────────────── Dashboard (Mission Control) ─────────────────────────
+// ───────────────────────── Dashboard (focused Mission Control) ─────────────────────────
 export default function Dashboard() {
   const [state, dispatch] = useReducer(reduce, initial)
   const [connected, setConnected] = useState(false)
@@ -291,7 +347,6 @@ export default function Dashboard() {
     // on a failure we just clear the spinner (the stream keeps rendering) rather than
     // bouncing the user out of Mission Control.
     await startRun(undefined, 'demo')
-    // leave the spinner state to the phase stream; clear local flag shortly
     setTimeout(() => setLaunching(false), 1200)
   }
 
@@ -299,119 +354,63 @@ export default function Dashboard() {
   const running = !!state.run && state.run.status === 'running'
   const finished = phase === 'done' || phase === 'error'
   const headline = phase ? PHASE_HEADLINE[phase] : 'Idle — point Overmind at a Lovable app'
-
-  // Live counters derived purely from the stream — the ribbon ticks as events arrive.
   const elapsed = useElapsed(state.run?.startedAt, finished || !running)
-  const agentsList = Object.values(state.agents)
-  const working = agentsList.filter((a) => a.status === 'working').length
-  const receiptsOk = state.receipts.filter((r) => r.ok).length
-  const rowsCopied = Object.values(state.tables).reduce((s, t) => s + t.copied, 0)
-  const checksPass = Object.values(state.checks).filter((c) => c.status === 'pass').length
-  const checksTotal = Object.values(state.checks).length
-  const readiness =
-    state.doneReadiness != null ? state.doneReadiness : state.graph ? Math.round(state.graph.readiness) : 0
-  const savePct =
-    state.cost && state.cost.supabaseUsd > 0
-      ? Math.round(((state.cost.supabaseUsd - state.cost.aivenUsd) / state.cost.supabaseUsd) * 100)
-      : 0
+
+  // ── target Aiven service status, derived purely from the stream ──
+  // Prefer the explicit stack event; otherwise fall back to nothing.
+  const pg = state.stack?.postgres
+  const kafka = state.stack?.kafka
+  // the "fresh service coming up" — show pg as the primary target, kafka as secondary
+  const targetSvc = pg ?? null
+  const rowsMigrated = Object.values(state.tables).reduce((s, t) => s + t.copied, 0)
+
+  // ── the prominent PR hand-off (action === 'github_pull_request') ──
+  const prReceipt = state.receipts.find((r) => r.action === 'github_pull_request')
 
   return (
-    <div className="shell">
-      <div className="topbar">
-        <a className="brand" href="#/" title="Back to overmind.aiven.io">
-          <span className="brand-logo">
-            <Logo size={30} />
-          </span>
-          <span className="brand-text">
-            <h1>
-              Aiven<span className="brand-sep">/</span>
-              <span className="brand-product">Overmind</span>
-            </h1>
-            <span className="sub">Migration Mission Control</span>
+    <div className="shell focused">
+      {/* 1 ── compact header: stepper + phase headline + elapsed clock ── */}
+      <header className="fhead">
+        <a className="fbrand" href="#/" title="Back to overmind.aiven.io">
+          <Logo size={26} />
+          <span className="fbrand-txt">
+            Aiven<span className="fbrand-sep">/</span>Overmind
           </span>
         </a>
 
-        <div className="phase-headline">
-          <div className="phase-big">
-            {phase && <span className="phase-ico">{PHASE_ICON[phase]}</span>}
-            <span className="dim">{running ? 'Phase · ' : ''}</span>
-            {headline}
-          </div>
-          <div className="spacer" />
-          <PhaseRail phase={phase} />
-        </div>
-
-        <div className="topbar-stepper">
+        <div className="fhead-stepper">
           <Stepper active="watch" />
         </div>
 
-        <div className="conn">
-          <span className={`dot ${connected ? (running ? 'live' : 'idle') : ''}`} />
-          {connected ? (running ? 'streaming' : 'connected') : 'offline'}
+        <div className="spacer" />
+
+        <div className="fphase">
+          <span className="fphase-ico">{phase ? PHASE_ICON[phase] : <Rocket size={16} />}</span>
+          <span className="fphase-text">{headline}</span>
         </div>
 
-        <button
-          className={`launch ${running ? 'running' : ''}`}
-          onClick={onLaunch}
-          disabled={launching || running}
-        >
+        <div className="fclock mono" title="elapsed">
+          <Activity size={13} /> {elapsed}
+        </div>
+
+        <span className={`fdot ${connected ? (running ? 'live' : 'idle') : ''}`} title={connected ? (running ? 'streaming' : 'connected') : 'offline'} />
+
+        <button className={`flaunch ${running ? 'running' : ''}`} onClick={onLaunch} disabled={launching || running}>
           {running ? (
             <>
-              <Activity size={16} /> Overmind running
+              <Activity size={15} /> Running
             </>
           ) : launching ? (
             'Launching…'
           ) : (
             <>
-              <Rocket size={16} /> Launch Overmind
+              <Rocket size={15} /> Launch
             </>
           )}
         </button>
-      </div>
+      </header>
 
-      {/* live metrics ribbon — pure function of the stream, ticks as events land */}
-      <div className="ribbon">
-        <Metric label="elapsed" value={elapsed} />
-        <Metric label="agents working" value={working} tone={working > 0 ? 'live' : ''} />
-        <Metric label="behaviors" value={state.graph?.nodes.length ?? 0} />
-        <Metric label="receipts ok" value={receiptsOk} tone="cyan" />
-        <Metric label="rows migrated" value={rowsCopied.toLocaleString()} tone="green" />
-        <Metric label="kafka events" value={state.kafka.length} tone="violet" />
-        <Metric
-          label="checks green"
-          value={checksTotal ? `${checksPass}/${checksTotal}` : '—'}
-          tone={checksTotal > 0 && checksPass === checksTotal ? 'green' : ''}
-        />
-        {savePct > 0 && <Metric label="cost cut" value={`${savePct}%`} tone="green" />}
-        <div className="spacer" />
-        <div className="ribbon-ready">
-          <div className="rr-track">
-            <div className="rr-fill" style={{ width: `${readiness}%` }} />
-          </div>
-          <div className="rr-pct">
-            <span className="rr-n">{readiness}%</span>
-            <span className="rr-l">heavy layer on Aiven</span>
-          </div>
-        </div>
-      </div>
-
-      {phase === 'done' && (
-        <div className="done-banner">
-          <span className="db-icon">
-            <Check size={22} />
-          </span>
-          <div className="db-body">
-            <div className="db-title">
-              Graduated · {state.doneReadiness ?? readiness}% of the heavy layer on Aiven
-            </div>
-            <div className="db-sub">{state.doneSummary ?? 'Live on the Aiven plane — CTO operator now on watch.'}</div>
-          </div>
-          <a className="db-cto-btn" href="#/cto">
-            Meet your Aiven CTO <ArrowRight size={16} />
-          </a>
-        </div>
-      )}
-
+      {/* ── error: clean one-liner ── */}
       {state.errorMsg && (
         <div className="error-banner">
           <span className="eb-icon">!</span>
@@ -422,50 +421,94 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="zones">
-        {/* ZONE 1 — SOURCE */}
-        <div className="zone zone-source">
-          <div className="zone-title">
-            <span className="zico">
-              <Database size={15} />
-            </span>
-            Source App
+      {/* ── done: clean success + the big CTO hand-off ── */}
+      {phase === 'done' && (
+        <div className="done-banner">
+          <span className="db-icon">
+            <Check size={22} />
+          </span>
+          <div className="db-body">
+            <div className="db-title">
+              Live on Aiven · {state.doneReadiness ?? 0}% of the heavy layer migrated
+            </div>
+            <div className="db-sub">
+              {state.doneSummary ?? 'Your data + realtime now run on the Aiven plane.'}
+            </div>
           </div>
-          <SourceCard run={state.run} graph={state.graph} />
+          <a className="db-cto-btn" href="#/cto">
+            Meet your Aiven CTO <ArrowRight size={16} />
+          </a>
         </div>
+      )}
 
-        {/* ZONE 2 — THE SWARM */}
-        <div className="zone zone-swarm">
-          <div className="zone-title">
-            <span className="zico">
-              <Network size={15} />
-            </span>
-            The Swarm
+      {/* 4 ── the prominent PR hand-off ── */}
+      {prReceipt && (
+        <a className="pr-banner" href={prReceipt.summary} target="_blank" rel="noreferrer">
+          <span className="pr-icon">
+            <FileCode size={20} />
+          </span>
+          <div className="pr-body">
+            <div className="pr-title">Opened a PR to migrate your app</div>
+            <div className="pr-sub mono">{prReceipt.summary}</div>
           </div>
-          <SwarmGrid agents={state.agents} />
-          <BehaviorGraphPanel graph={state.graph} />
-          <FeedPanel
-            receipts={state.receipts}
-            logs={state.logs}
-            artifacts={Object.values(state.artifacts)}
-          />
-        </div>
+          <span className="pr-cta">
+            View on GitHub <ArrowRight size={15} />
+          </span>
+        </a>
+      )}
 
-        {/* ZONE 3 — AIVEN PLANE */}
-        <div className="zone zone-aiven">
-          <div className="zone-title">
-            <span className="zico">
-              <Cloud size={15} />
+      {/* 2 ── THE HERO: the live real-tool-call feed ── */}
+      <HeroFeed receipts={state.receipts} logs={state.logs} />
+
+      {/* 3 ── tiny target-service status line ── */}
+      <div className="target-line">
+        {targetSvc ? (
+          <>
+            <span className="tl-ico">
+              <Server size={14} />
             </span>
-            Aiven Plane
-          </div>
-          <AivenServices stack={state.stack} />
-          <MigrationProgress tables={state.tables} />
-          <KafkaTicker events={state.kafka} />
-          <ValidationChecklist checks={state.checks} />
-          <CostCard cost={state.cost} />
-          <CtoPanel recs={state.recs} />
-        </div>
+            <span className="tl-name mono">{targetSvc.service}</span>
+            <span className={`tl-state ${targetSvc.state === 'RUNNING' ? 'up' : 'building'}`}>
+              {targetSvc.state === 'RUNNING' ? (
+                <>
+                  <Check size={12} /> RUNNING
+                </>
+              ) : (
+                <>
+                  <span className="tl-spin" /> {targetSvc.state || 'BUILDING'}
+                </>
+              )}
+            </span>
+            {targetSvc.pgvector && <span className="tl-tag">pgvector</span>}
+            {kafka && (
+              <>
+                <span className="tl-sep" />
+                <span className="tl-ico">
+                  <Stream size={14} />
+                </span>
+                <span className="tl-name mono">{kafka.service}</span>
+                <span className={`tl-state ${kafka.state === 'RUNNING' ? 'up' : 'building'}`}>
+                  {kafka.state === 'RUNNING' ? 'RUNNING' : kafka.state || 'BUILDING'}
+                </span>
+              </>
+            )}
+            <span className="spacer" />
+            <span className="tl-rows mono">{rowsMigrated.toLocaleString()} rows migrated</span>
+          </>
+        ) : (
+          <>
+            <span className="tl-ico">
+              <Cloud size={14} />
+            </span>
+            <span className="tl-dim">Target Aiven service spins up here as the agents provision it…</span>
+            {rowsMigrated > 0 && (
+              <>
+                <span className="spacer" />
+                <span className="tl-rows mono">{rowsMigrated.toLocaleString()} rows migrated</span>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

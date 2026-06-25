@@ -1,13 +1,18 @@
 // server/migrator.ts — REAL, deterministic data plumbing for the Overmind demo migration.
 //
 // This is the honest engine behind the demo's provision → migrate → verify arc. It does NO theater:
-//   • targetConnInfo()   resolves overmind-grad's live connection string from the Aiven REST API.
-//   • applyTargetSchema() applies the PulseWall schema to overmind-grad (idempotent, direct pg —
+//   • targetConnInfo(svc) resolves a target service's live connection string from the Aiven MCP/REST.
+//   • applyTargetSchema() applies the PulseWall schema to the target (idempotent, direct pg —
 //                         the MCP write path blocks CREATE EXTENSION / CREATE FUNCTION).
 //   • copyData(emit)      reads rows from the SOURCE (overmind-pg via DATABASE_URL) and bulk-inserts
-//                         them into the TARGET (overmind-grad), in FK order, INCLUDING the pgvector
-//                         embedding column. Emits {type:'migration'} as rows actually land.
+//                         them into the TARGET, in FK order, INCLUDING the pgvector embedding column.
+//                         Emits {type:'migration'} as rows actually land.
 //   • verifyParity()      SELECT count(*) per table on BOTH source and target and reports real equality.
+//
+// The TARGET is dynamic: the graduate run provisions a fresh, uniquely-named service each run and
+// passes its name in (targetService) so every migrator log/receipt names the real service. The
+// hardcoded TARGET_SERVICE (overmind-grad, override via env) remains the fallback used by callers
+// that don't pass a service.
 //
 // Degradation contract: every function logs clearly and returns a typed result rather than throwing
 // into the pipeline. The orchestrator decides how to narrate; we never crash the run.
@@ -23,7 +28,7 @@ import { dirname, resolve } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-/** The target service we migrate INTO. The source is overmind-pg via DATABASE_URL. */
+/** Default target service we migrate INTO when a caller doesn't pass one. Source is overmind-pg. */
 export const TARGET_SERVICE = process.env.OVERMIND_TARGET_SERVICE || 'overmind-grad'
 
 /** Tables in FK-safe insert order. users ← posts ← reactions. */
@@ -53,7 +58,7 @@ function isRedacted(conn: string | undefined): boolean {
 }
 
 /**
- * Resolve overmind-grad's live Postgres connection string.
+ * Resolve a target service's live Postgres connection string. Defaults to TARGET_SERVICE.
  *
  * IMPORTANT: the Aiven REST v1 API redacts service passwords for our token scope
  * (service_uri_params.password === "<redacted>"), so a REST-assembled URI fails auth. The MCP
@@ -62,7 +67,10 @@ function isRedacted(conn: string | undefined): boolean {
  * redacting. Returns a normalized conn string (sslmode stripped — aiven/pg.ts drives TLS via ssl),
  * or null (with a clear log) if creds can't be resolved.
  */
-export async function targetConnInfo(emit: (e: SwarmEvent) => void): Promise<string | null> {
+export async function targetConnInfo(
+  emit: (e: SwarmEvent) => void,
+  service: string = TARGET_SERVICE,
+): Promise<string | null> {
   if (!hasAivenToken()) {
     emit({ type: 'log', level: 'warn', msg: 'migrate: AIVEN_TOKEN unset — cannot resolve target connection' })
     return null
@@ -70,14 +78,14 @@ export async function targetConnInfo(emit: (e: SwarmEvent) => void): Promise<str
 
   // 1) MCP secrets (real password).
   try {
-    const sec = await getPgSecrets(AIVEN_PROJECT, TARGET_SERVICE)
+    const sec = await getPgSecrets(AIVEN_PROJECT, service)
     let conn = sec?.service_uri
     if (!conn && sec?.host && sec?.user && sec?.password) {
       const db = sec.dbname || 'defaultdb'
       conn = `postgres://${encodeURIComponent(sec.user)}:${encodeURIComponent(sec.password)}@${sec.host}:${sec.port ?? 5432}/${db}?sslmode=require`
     }
     if (conn && !isRedacted(conn)) {
-      emit({ type: 'log', level: 'info', msg: `migrate: resolved live ${TARGET_SERVICE} credentials via Aiven MCP` })
+      emit({ type: 'log', level: 'info', msg: `migrate: resolved live ${service} credentials via Aiven MCP` })
       return normalizeConnString(conn)
     }
   } catch (e) {
@@ -86,17 +94,17 @@ export async function targetConnInfo(emit: (e: SwarmEvent) => void): Promise<str
 
   // 2) REST fallback (works only if this token's REST scope is not redacting secrets).
   try {
-    const ci = await connectionInfo(AIVEN_PROJECT, TARGET_SERVICE)
+    const ci = await connectionInfo(AIVEN_PROJECT, service)
     let conn = ci.uri
     if ((!conn || isRedacted(conn)) && ci.host && ci.user && ci.password) {
       const db = ci.dbname || 'defaultdb'
       conn = `postgres://${encodeURIComponent(ci.user)}:${encodeURIComponent(ci.password)}@${ci.host}:${ci.port ?? 5432}/${db}?sslmode=require`
     }
     if (conn && !isRedacted(conn)) {
-      emit({ type: 'log', level: 'info', msg: `migrate: resolved ${TARGET_SERVICE} credentials via Aiven REST` })
+      emit({ type: 'log', level: 'info', msg: `migrate: resolved ${service} credentials via Aiven REST` })
       return normalizeConnString(conn)
     }
-    emit({ type: 'log', level: 'warn', msg: `migrate: ${TARGET_SERVICE} credentials redacted by REST and MCP secrets unavailable` })
+    emit({ type: 'log', level: 'warn', msg: `migrate: ${service} credentials redacted by REST and MCP secrets unavailable` })
     return null
   } catch (e) {
     emit({ type: 'log', level: 'warn', msg: `migrate: target connection lookup failed (${(e as Error).message})` })
@@ -122,6 +130,7 @@ function loadSchemaSql(): string {
 export async function applyTargetSchema(
   targetConn: string,
   emit: (e: SwarmEvent) => void,
+  service: string = TARGET_SERVICE,
 ): Promise<{ ok: boolean; statements: number; error?: string }> {
   let sql: string
   try {
@@ -133,9 +142,9 @@ export async function applyTargetSchema(
   }
   const res = await applySchemaSql(targetConn, sql)
   if (res.ok) {
-    emit({ type: 'log', level: 'info', msg: `migrate: applied schema to ${TARGET_SERVICE} (${res.statements} statements, idempotent)` })
+    emit({ type: 'log', level: 'info', msg: `migrate: applied schema to ${service} (${res.statements} statements, idempotent)` })
   } else {
-    emit({ type: 'log', level: 'warn', msg: `migrate: schema apply failed on ${TARGET_SERVICE} (${res.error})` })
+    emit({ type: 'log', level: 'warn', msg: `migrate: schema apply failed on ${service} (${res.error})` })
   }
   return res
 }
@@ -222,6 +231,7 @@ export async function copyData(
   sourceConn: string,
   targetConn: string,
   emit: (e: SwarmEvent) => void,
+  service: string = TARGET_SERVICE,
 ): Promise<CopyTableResult[]> {
   const results: CopyTableResult[] = []
   const { pool } = await import('../aiven/pg.ts')
@@ -234,7 +244,7 @@ export async function copyData(
       const r = await copyTable(sourceConn, client, t, emit)
       results.push(r)
       if (r.ok) {
-        emit({ type: 'log', level: 'info', msg: `migrate: copied ${r.copied}/${r.source} rows into ${TARGET_SERVICE}.${t}` })
+        emit({ type: 'log', level: 'info', msg: `migrate: copied ${r.copied}/${r.source} rows into ${service}.${t}` })
       } else {
         emit({ type: 'log', level: 'warn', msg: `migrate: ${t} copy incomplete (${r.copied}/${r.source})` })
       }
