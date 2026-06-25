@@ -31,6 +31,9 @@ function estimateRows(csvText: string): number {
 }
 
 export default function Deploy() {
+  // The Lovable app being graduated, shown as a real editable input (not a hidden preset) so the
+  // connect step reads as genuinely pointing Overmind at a repo. Prefilled with the demo app's repo.
+  const [appRepo, setAppRepo] = useState('https://github.com/ToukoUrsin/live-hype-wall')
   const [repo, setRepo] = useState('')
   const [busy, setBusy] = useState<null | 'demo' | 'analyze'>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -194,24 +197,35 @@ export default function Deploy() {
             <div className="pp-connect-eyebrow">
               <span className="pp-live-dot" /> Recommended · real ~40s migration
             </div>
-            <h2 className="pp-h2">Use the demo app</h2>
-            <div className="pp-demo-app">
-              <span className="pp-leaf">
-                <FolderMark />
-              </span>
-              <div className="pp-demo-app-body">
-                <div className="pp-demo-app-name">PulseWall</div>
-                <div className="pp-demo-app-sub">a real Lovable + Supabase app</div>
+            <h2 className="pp-h2">Connect your Lovable app</h2>
+            <div className="pp-source-field">
+              <div className="pp-source-input">
+                <span className="pp-leaf">
+                  <FolderMark />
+                </span>
+                <input
+                  value={appRepo}
+                  onChange={(e) => setAppRepo(e.target.value)}
+                  spellCheck={false}
+                  aria-label="your Lovable app repo"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') go(appRepo.trim() || undefined, 'demo')
+                  }}
+                />
+                <span className="pp-source-badge">
+                  <DotMark /> Lovable · detected
+                </span>
               </div>
-              <span className="pp-source-badge">
-                <DotMark /> Lovable · detected
-              </span>
+            </div>
+            <div className="pp-demo-app-sub" style={{ marginTop: 8 }}>
+              PulseWall — a real Lovable + Supabase app. Its data + realtime graduate to Aiven; the
+              rest keeps shipping on Lovable.
             </div>
           </div>
           <div className="pp-connect-action">
             <button
               className="pp-btn pp-btn-primary pp-btn-lg pp-btn-block"
-              onClick={() => go(undefined, 'demo')}
+              onClick={() => go(appRepo.trim() || undefined, 'demo')}
               disabled={busy !== null}
             >
               {busy === 'demo' ? (
