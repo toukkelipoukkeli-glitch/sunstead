@@ -4,7 +4,7 @@
 
 ### The agentic front door to Aiven.
 
-**Point Overmind at a Lovable/Supabase app — an agent swarm graduates its data, realtime and search onto Aiven, then an always-on CTO agent runs it for you.**
+**Overmind migrates your data and behavior off locked-in vendors like Lovable onto proper, cheaper Aiven infra — by an agent swarm via the MCP — then an always-on CTO agent runs it for you.**
 
 [**Get started**](overmind/README.md) · [**Live demo**](https://toukkelipoukkeli-glitch.github.io/overmind-live/)
 
