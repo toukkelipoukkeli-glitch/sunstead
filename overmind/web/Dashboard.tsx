@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type {
   SwarmEvent,
   MigrationRun,
@@ -23,6 +24,22 @@ import { KafkaTicker, type KafkaEvent } from './components/KafkaTicker.tsx'
 import { ValidationChecklist } from './components/ValidationChecklist.tsx'
 import { CostCard, type CostState } from './components/CostCard.tsx'
 import { CtoPanel } from './components/CtoPanel.tsx'
+import {
+  Logo,
+  Bolt,
+  Check,
+  ArrowRight,
+  Search,
+  Network,
+  Layers,
+  Server,
+  Database,
+  Sparkle,
+  Shield,
+  Activity,
+  Rocket,
+  Cloud,
+} from './icons.tsx'
 
 // ───────────────────────── dashboard state ─────────────────────────
 interface DashState {
@@ -118,6 +135,7 @@ function reduce(s: DashState, e: SwarmEvent): DashState {
         id: nextId(),
         level: e.ok ? 'info' : 'warn',
         msg: `heal ${e.artifact} · attempt ${e.attempt} · ${e.ok ? 'green' : e.error ?? 'failed'}`,
+        ts: new Date().toISOString(),
       }
       return { ...s, artifacts, logs: [log, ...s.logs].slice(0, CAP) }
     }
@@ -128,7 +146,13 @@ function reduce(s: DashState, e: SwarmEvent): DashState {
     case 'cto':
       return { ...s, recs: [e.rec, ...s.recs].slice(0, CAP) }
     case 'log':
-      return { ...s, logs: [{ id: nextId(), level: e.level, msg: e.msg }, ...s.logs].slice(0, CAP) }
+      return {
+        ...s,
+        logs: [{ id: nextId(), level: e.level, msg: e.msg, ts: new Date().toISOString() }, ...s.logs].slice(
+          0,
+          CAP,
+        ),
+      }
     case 'done':
       return {
         ...s,
@@ -178,6 +202,22 @@ const PHASE_HEADLINE: Record<RunPhase, string> = {
   error: 'Run halted — see log',
 }
 
+// A crisp line icon per phase — gives the headline the icon-rich Aiven feel.
+const PHASE_ICON: Record<RunPhase, ReactNode> = {
+  recon: <Search size={18} />,
+  graph: <Network size={18} />,
+  plan: <Layers size={18} />,
+  provision: <Server size={18} />,
+  migrate: <Database size={18} />,
+  generate: <Sparkle size={18} />,
+  heal: <Shield size={18} />,
+  verify: <Check size={18} />,
+  cutover: <ArrowRight size={18} />,
+  operate: <Activity size={18} />,
+  done: <Check size={18} />,
+  error: <Bolt size={18} />,
+}
+
 function PhaseRail({ phase }: { phase: RunPhase | null }) {
   const curIdx = phase ? PHASES.findIndex((p) => p.key === phase) : -1
   return (
@@ -197,6 +237,30 @@ function PhaseRail({ phase }: { phase: RunPhase | null }) {
           </span>
         )
       })}
+    </div>
+  )
+}
+
+// ───────────────────────── derived live metrics (the ribbon) ─────────────────────────
+function useElapsed(startedAt: string | undefined, stopped: boolean): string {
+  const [, tick] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    if (!startedAt || stopped) return
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt, stopped])
+  if (!startedAt) return '0:00'
+  const ms = Date.now() - new Date(startedAt).getTime()
+  if (isNaN(ms) || ms < 0) return '0:00'
+  const s = Math.floor(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+function Metric({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
+  return (
+    <div className={`ribbon-metric ${tone ?? ''}`}>
+      <div className="rm-n">{value}</div>
+      <div className="rm-l">{label}</div>
     </div>
   )
 }
@@ -229,18 +293,43 @@ export default function Dashboard() {
 
   const phase = state.phase
   const running = !!state.run && state.run.status === 'running'
+  const finished = phase === 'done' || phase === 'error'
   const headline = phase ? PHASE_HEADLINE[phase] : 'Idle — point Overmind at a Lovable app'
+
+  // Live counters derived purely from the stream — the ribbon ticks as events arrive.
+  const elapsed = useElapsed(state.run?.startedAt, finished || !running)
+  const agentsList = Object.values(state.agents)
+  const working = agentsList.filter((a) => a.status === 'working').length
+  const receiptsOk = state.receipts.filter((r) => r.ok).length
+  const rowsCopied = Object.values(state.tables).reduce((s, t) => s + t.copied, 0)
+  const checksPass = Object.values(state.checks).filter((c) => c.status === 'pass').length
+  const checksTotal = Object.values(state.checks).length
+  const readiness =
+    state.doneReadiness != null ? state.doneReadiness : state.graph ? Math.round(state.graph.readiness) : 0
+  const savePct =
+    state.cost && state.cost.supabaseUsd > 0
+      ? Math.round(((state.cost.supabaseUsd - state.cost.aivenUsd) / state.cost.supabaseUsd) * 100)
+      : 0
 
   return (
     <div className="shell">
       <div className="topbar">
-        <a className="brand" href="#/" title="Back to overmind.aiven.io" style={{ textDecoration: 'none' }}>
-          <h1>OVERMIND</h1>
-          <span className="sub">← Aiven Migration Mission Control</span>
+        <a className="brand" href="#/" title="Back to overmind.aiven.io">
+          <span className="brand-logo">
+            <Logo size={30} />
+          </span>
+          <span className="brand-text">
+            <h1>
+              Aiven<span className="brand-sep">/</span>
+              <span className="brand-product">Overmind</span>
+            </h1>
+            <span className="sub">Migration Mission Control</span>
+          </span>
         </a>
 
         <div className="phase-headline">
           <div className="phase-big">
+            {phase && <span className="phase-ico">{PHASE_ICON[phase]}</span>}
             <span className="dim">{running ? 'Phase · ' : ''}</span>
             {headline}
           </div>
@@ -258,16 +347,68 @@ export default function Dashboard() {
           onClick={onLaunch}
           disabled={launching || running}
         >
-          {running ? '◆ Overmind running' : launching ? 'Launching…' : '⚡ Launch Overmind'}
+          {running ? (
+            <>
+              <Activity size={16} /> Overmind running
+            </>
+          ) : launching ? (
+            'Launching…'
+          ) : (
+            <>
+              <Rocket size={16} /> Launch Overmind
+            </>
+          )}
         </button>
       </div>
 
-      {state.errorMsg && (
-        <div className="panel" style={{ marginTop: 14, borderColor: '#4a2330' }}>
-          <span className="logline error">
-            <span className="lvl">error</span>
-            <span className="lmsg">{state.errorMsg}</span>
+      {/* live metrics ribbon — pure function of the stream, ticks as events land */}
+      <div className="ribbon">
+        <Metric label="elapsed" value={elapsed} />
+        <Metric label="agents working" value={working} tone={working > 0 ? 'live' : ''} />
+        <Metric label="behaviors" value={state.graph?.nodes.length ?? 0} />
+        <Metric label="receipts ok" value={receiptsOk} tone="cyan" />
+        <Metric label="rows migrated" value={rowsCopied.toLocaleString()} tone="green" />
+        <Metric label="kafka events" value={state.kafka.length} tone="violet" />
+        <Metric
+          label="checks green"
+          value={checksTotal ? `${checksPass}/${checksTotal}` : '—'}
+          tone={checksTotal > 0 && checksPass === checksTotal ? 'green' : ''}
+        />
+        {savePct > 0 && <Metric label="cost cut" value={`${savePct}%`} tone="green" />}
+        <div className="spacer" />
+        <div className="ribbon-ready">
+          <div className="rr-track">
+            <div className="rr-fill" style={{ width: `${readiness}%` }} />
+          </div>
+          <div className="rr-pct">
+            <span className="rr-n">{readiness}%</span>
+            <span className="rr-l">migrated to Aiven</span>
+          </div>
+        </div>
+      </div>
+
+      {phase === 'done' && (
+        <div className="done-banner">
+          <span className="db-icon">
+            <Check size={22} />
           </span>
+          <div className="db-body">
+            <div className="db-title">
+              Migration complete · {state.doneReadiness ?? readiness}% on Aiven
+            </div>
+            <div className="db-sub">{state.doneSummary ?? 'Live on the Aiven plane — CTO operator now on watch.'}</div>
+          </div>
+          <span className="db-spark" />
+        </div>
+      )}
+
+      {state.errorMsg && (
+        <div className="error-banner">
+          <span className="eb-icon">!</span>
+          <div className="eb-body">
+            <div className="eb-title">Run halted</div>
+            <div className="eb-sub mono">{state.errorMsg}</div>
+          </div>
         </div>
       )}
 
@@ -275,7 +416,9 @@ export default function Dashboard() {
         {/* ZONE 1 — SOURCE */}
         <div className="zone zone-source">
           <div className="zone-title">
-            <span className="bar" />
+            <span className="zico">
+              <Database size={15} />
+            </span>
             Source App
           </div>
           <SourceCard run={state.run} graph={state.graph} />
@@ -284,7 +427,9 @@ export default function Dashboard() {
         {/* ZONE 2 — THE SWARM */}
         <div className="zone zone-swarm">
           <div className="zone-title">
-            <span className="bar" />
+            <span className="zico">
+              <Network size={15} />
+            </span>
             The Swarm
           </div>
           <SwarmGrid agents={state.agents} />
@@ -299,7 +444,9 @@ export default function Dashboard() {
         {/* ZONE 3 — AIVEN PLANE */}
         <div className="zone zone-aiven">
           <div className="zone-title">
-            <span className="bar" />
+            <span className="zico">
+              <Cloud size={15} />
+            </span>
             Aiven Plane
           </div>
           <AivenServices stack={state.stack} />

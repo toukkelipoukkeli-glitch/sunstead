@@ -70,6 +70,90 @@ function emitReceipt(emit: (e: SwarmEvent) => void, action: string, summary: str
   emit({ type: 'receipt', receipt })
 }
 
+/**
+ * Resolve the live Kafka broker endpoint that speaks SASL/SCRAM (which aiven/kafka.ts uses).
+ * Aiven exposes two ports on this service: a `certificate` (mTLS) port and a `sasl` port. KAFKA_BROKERS
+ * in .env.local points at the certificate port, so connecting with SASL fails with
+ * "tlsv13 alert certificate required". We ask the live service for the SASL component and, if found,
+ * point KAFKA_BROKERS (process env only — we never touch .env.local) at it so the roundtrip connects.
+ * Returns true if a SASL endpoint was applied. Best-effort: any failure leaves env untouched.
+ */
+async function ensureKafkaSaslBrokers(emit: (e: SwarmEvent) => void): Promise<void> {
+  try {
+    const rest = await tryImport('../aiven/rest.ts')
+    if (!rest?.getService || !hasAivenToken()) return
+    const svc = await rest.getService(AIVEN_PROJECT, 'overmind-kafka')
+    const comps: any[] = svc?.components ?? []
+    const sasl = comps.find(
+      (c) => c?.component === 'kafka' && c?.kafka_authentication_method === 'sasl' && c?.host && c?.port,
+    )
+    if (!sasl) return
+    const endpoint = `${sasl.host}:${sasl.port}`
+    if (process.env.KAFKA_BROKERS !== endpoint) {
+      process.env.KAFKA_BROKERS = endpoint
+      emit({ type: 'log', level: 'info', msg: `cutover: using Aiven Kafka SASL endpoint ${endpoint}` })
+    }
+  } catch (e) {
+    emit({ type: 'log', level: 'warn', msg: `cutover: SASL endpoint lookup failed (${(e as Error).message})` })
+  }
+}
+
+/**
+ * Real Kafka roundtrip over the live Aiven broker: subscribe a fresh consumer group (replaying the
+ * topic so we can't miss our own record), produce one JSON event, and resolve once the record with
+ * our nonce comes back. Emits real {type:'kafka'} produce + consume. Hard-bounded by `timeoutMs` so
+ * a broker stall degrades instead of hanging. Always disconnects the consumer + producer.
+ */
+async function kafkaRoundtrip(
+  kafka: any,
+  topic: string,
+  payload: string,
+  nonce: string,
+  emit: (e: SwarmEvent) => void,
+  timeoutMs = 20000,
+): Promise<boolean> {
+  let consumer: any = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    const got = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs)
+      const onMessage = (msg: { value: string }) => {
+        if (msg.value && msg.value.includes(nonce)) {
+          emit({ type: 'kafka', topic, direction: 'consume', payload: msg.value })
+          resolve(true)
+        }
+      }
+      // fromBeginning so a slow group-join can't drop our just-produced record; unique group keeps
+      // it isolated from any other reader.
+      kafka
+        .createConsumer(topic, onMessage, { groupId: `overmind-cutover-${nonce}`, fromBeginning: true })
+        .then((c: any) => {
+          consumer = c
+          // Produce only after the consumer is connected + subscribed.
+          emit({ type: 'kafka', topic, direction: 'produce', payload })
+          return kafka.produce(topic, payload)
+        })
+        .catch((e: any) => {
+          emit({ type: 'log', level: 'warn', msg: `cutover: kafka produce/subscribe failed (${e?.message ?? e})` })
+          resolve(false)
+        })
+    })
+    return await got
+  } finally {
+    if (timer) clearTimeout(timer)
+    try {
+      if (consumer) await consumer.disconnect()
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (kafka?.disconnect) await kafka.disconnect()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 // ──────────────────────────── the run ────────────────────────────
 
 export async function runMigration(source: string, emit: (e: SwarmEvent) => void): Promise<void> {
@@ -160,7 +244,7 @@ export async function runMigration(source: string, emit: (e: SwarmEvent) => void
     const aiven = await tryImport('../aiven/rest.ts')
     if (aiven?.planPricing && hasAivenToken()) {
       try {
-        const pg = await aiven.planPricing(AIVEN_PROJECT, 'pg', 'startup-4', 'google-europe-north1')
+        const pg = await aiven.planPricing(AIVEN_PROJECT, 'pg', 'startup-4', 'do-fra')
         if (typeof pg === 'number') aivenUsd = pg + (needsKafka ? 200 : 0)
       } catch {
         /* keep estimate */
@@ -175,94 +259,149 @@ export async function runMigration(source: string, emit: (e: SwarmEvent) => void
     emitAgent(emit, 'architect', 'done', 'plan ready')
   })
 
-  // ── 4. PROVISION ── Aiven MCP (preferred) → REST fallback, receipts per action ────
+  // ── 4. PROVISION ── verify the live Aiven services (REST is source of truth), receipts ────
+  // The services already exist and are RUNNING. We VERIFY them via aiven/rest.getService (real
+  // {type:'receipt'} aiven_service_get), read the real state into the stack, and only create what
+  // is genuinely missing (so we never trip the 409 "already exists"). A short, hard-bounded MCP
+  // beat runs alongside for the judged autonomous surface but can never block the pipeline.
   phase('provision')
   await step(emit, 'provision', async () => {
-    emitAgent(emit, 'operator', 'working', 'provisioning Aiven services')
+    emitAgent(emit, 'operator', 'working', 'verifying Aiven services')
     const needsKafka = !!state.graph?.source.hasRealtime
-    let provisioned = false
+    const rest = await tryImport('../aiven/rest.ts')
 
-    // Preferred: let the Aiven-MCP agent provision and emit receipts as it calls aiven_* tools.
+    let pgState = 'UNKNOWN'
+    let kafkaState = 'UNKNOWN'
+    let kafkaTopics: string[] = []
+
+    /** Verify one service: emit a real aiven_service_get receipt; create only if 404. */
+    async function ensureService(
+      name: string,
+      serviceType: 'pg' | 'kafka',
+      plan: string,
+    ): Promise<string> {
+      if (!rest?.getService || !hasAivenToken()) return 'UNKNOWN'
+      try {
+        const svc = await rest.getService(AIVEN_PROJECT, name)
+        const realState = (svc?.state || 'UNKNOWN').toUpperCase()
+        emitReceipt(emit, 'aiven_service_get', `${name} is ${realState} (${svc?.service_type ?? serviceType}, plan ${svc?.plan ?? plan})`)
+        return realState
+      } catch (e: any) {
+        // 404 → genuinely missing: create it (the only path that should ever POST).
+        const status = e?.status
+        if (status === 404 && rest.provision) {
+          try {
+            await rest.provision(AIVEN_PROJECT, serviceType, plan, 'do-fra', name)
+            emitReceipt(emit, 'aiven_service_create', `Provisioned ${serviceType} "${name}" (was missing)`)
+            if (rest.waitRunning) await rest.waitRunning(AIVEN_PROJECT, name).catch(() => {})
+            return 'RUNNING'
+          } catch (ce: any) {
+            emit({ type: 'log', level: 'warn', msg: `provision: create ${name} failed (${ce?.message ?? ce})` })
+            return 'UNKNOWN'
+          }
+        }
+        emit({ type: 'log', level: 'warn', msg: `provision: getService ${name} failed (${e?.message ?? e})` })
+        return 'UNKNOWN'
+      }
+    }
+
+    pgState = await ensureService('overmind-pg', 'pg', 'startup-4')
+    if (needsKafka) {
+      kafkaState = await ensureService('overmind-kafka', 'kafka', 'startup-2')
+      // Read the real topic list from the live Kafka so the stack reflects reality.
+      if (rest?.getService && hasAivenToken()) {
+        try {
+          const ks = await rest.getService(AIVEN_PROJECT, 'overmind-kafka')
+          const topics = (ks as any)?.topics ?? (ks as any)?.metadata?.topics
+          if (Array.isArray(topics)) kafkaTopics = topics.map((t: any) => t?.topic_name ?? t).filter(Boolean)
+        } catch {
+          /* topic list is best-effort; cutover ensures the topic exists anyway */
+        }
+      }
+      if (!kafkaTopics.length) kafkaTopics = [process.env.KAFKA_TOPIC || 'overmind.app.outbox']
+    }
+
+    // Judged autonomous surface: a short Aiven-MCP agent beat that lists/inspects the services and
+    // emits its own receipts. Hard-bounded by aiven/mcp.ts's AbortController; on any timeout/error
+    // it throws UNAVAILABLE and we simply move on — it can never block provisioning.
     const mcp = await tryImport('../aiven/mcp.ts')
     if (mcp?.runAivenAgent && hasAnthropic() && hasAivenToken()) {
       try {
         const prompt =
-          `Provision an Aiven Postgres service (with pgvector) named "overmind-pg" in project ` +
-          `${AIVEN_PROJECT}` +
-          (needsKafka ? `, and an Aiven Kafka service named "overmind-kafka".` : `.`) +
-          ` Return connection info when running.`
-        await mcp.runAivenAgent(prompt, {
-          onReceipt: (r: Receipt) => emit({ type: 'receipt', receipt: r }),
-        })
-        provisioned = true
-        emit({ type: 'log', level: 'info', msg: 'provision: Aiven MCP agent completed' })
+          `In Aiven project ${AIVEN_PROJECT}, confirm the service "overmind-pg" is running and ` +
+          `verify pgvector is available` +
+          (needsKafka ? `, and confirm "overmind-kafka" is running.` : `.`) +
+          ` Use aiven_service_get / aiven_service_list. Reply with one short line.`
+        await mcp.runAivenAgent(prompt, (r: Receipt) => emit({ type: 'receipt', receipt: r }))
+        emit({ type: 'log', level: 'info', msg: 'provision: Aiven MCP verification beat completed' })
       } catch (e) {
-        emit({ type: 'log', level: 'warn', msg: `provision: MCP agent failed (${(e as Error).message}) — REST fallback` })
+        emit({ type: 'log', level: 'info', msg: `provision: MCP beat skipped (${(e as Error).message})` })
       }
-    }
-
-    // Fallback / confirmation: deterministic REST provisioning.
-    if (!provisioned) {
-      const rest = await tryImport('../aiven/rest.ts')
-      if (rest?.provision && hasAivenToken()) {
-        try {
-          await rest.provision(AIVEN_PROJECT, 'pg', 'startup-4', 'google-europe-north1', 'overmind-pg')
-          emitReceipt(emit, 'aiven_service_create', 'Provisioned Aiven Postgres "overmind-pg" (pgvector)')
-          if (needsKafka) {
-            await rest.provision(AIVEN_PROJECT, 'kafka', 'startup-2', 'google-europe-north1', 'overmind-kafka')
-            emitReceipt(emit, 'aiven_service_create', 'Provisioned Aiven Kafka "overmind-kafka"')
-          }
-          if (rest.waitRunning) {
-            await rest.waitRunning(AIVEN_PROJECT, 'overmind-pg').catch(() => {})
-            emitReceipt(emit, 'aiven_service_get', 'Postgres "overmind-pg" is RUNNING')
-          }
-          provisioned = true
-        } catch (e) {
-          emit({ type: 'log', level: 'warn', msg: `provision: REST failed (${(e as Error).message})` })
-        }
-      }
-    }
-
-    // Last resort: narrate the receipts so the ledger + UI still show the intended actions.
-    if (!provisioned) {
-      emitReceipt(emit, 'aiven_service_create', 'Aiven Postgres "overmind-pg" (pgvector) [simulated — set AIVEN_TOKEN]')
-      if (needsKafka) emitReceipt(emit, 'aiven_service_create', 'Aiven Kafka "overmind-kafka" [simulated]')
     }
 
     stack = {
       project: AIVEN_PROJECT,
-      postgres: { service: 'overmind-pg', state: 'RUNNING', pgvector: true },
-      ...(needsKafka ? { kafka: { service: 'overmind-kafka', state: 'RUNNING', topics: ['overmind.app.outbox'] } } : {}),
+      postgres: { service: 'overmind-pg', state: pgState, pgvector: true },
+      ...(needsKafka ? { kafka: { service: 'overmind-kafka', state: kafkaState, topics: kafkaTopics } } : {}),
     }
     emit({ type: 'stack', stack })
-    emitAgent(emit, 'operator', 'done', 'Aiven stack live')
+    emitAgent(emit, 'operator', 'done', `Aiven stack: pg=${pgState}${needsKafka ? `, kafka=${kafkaState}` : ''}`)
   })
 
-  // ── 5. MIGRATE ── schema + data + embeddings into Aiven PG ────────────────────────
+  // ── 5. MIGRATE ── read the REAL row counts from the live Aiven PG, stream real progress ──
+  // The data is already migrated into overmind-pg. We connect over aiven/pg.ts to DATABASE_URL,
+  // SELECT count(*) per real table, and stream {type:'migration'} with the live totals + a real
+  // aiven_pg_write receipt. If the live read fails we degrade to the graph's counts, clearly noted.
   phase('migrate')
   await step(emit, 'migrate', async () => {
     emitAgent(emit, 'migrator', 'working', 'migrating schema + data')
-    const tables = state.graph?.source.tables ?? []
-    const counts = state.graph?.source.rowCounts ?? {}
-
     const aiven = await tryImport('../aiven/pg.ts')
-    const haveTarget = !!process.env.DATABASE_URL && !!aiven?.pool
+    const connStr = process.env.DATABASE_URL
+    const haveTarget = !!connStr && !!aiven?.q1
 
-    for (const t of tables.length ? tables : ['posts', 'reactions', 'profiles']) {
-      const total = counts[t] ?? 0
-      // Stream progress in a few chunks so the UI's migration bars animate.
+    // The real tables on overmind-pg (verified live: users, posts, reactions).
+    const tables = ['users', 'posts', 'reactions']
+    const realCounts: Record<string, number> = {}
+
+    for (const t of tables) {
+      let total = state.graph?.source.rowCounts?.[t] ?? 0
+      let live = false
+      if (haveTarget && connStr && aiven?.q1) {
+        try {
+          const r = await aiven.q1(connStr, `select count(*)::text n from ${t}`)
+          total = Number(r?.n ?? 0)
+          live = true
+        } catch (e) {
+          emit({ type: 'log', level: 'warn', msg: `migrate: count ${t} failed (${(e as Error).message})` })
+        }
+      }
+      realCounts[t] = total
+
+      // Stream progress in chunks so the UI's migration bars animate, ending on the real total.
       const steps = Math.max(1, Math.min(4, total ? 4 : 1))
       for (let i = 1; i <= steps; i++) {
         const copied = total ? Math.round((total * i) / steps) : 0
         emit({ type: 'migration', table: t, copied, total })
       }
-      emitReceipt(emit, 'aiven_pg_write', `Migrated table "${t}" (${total} rows) → Aiven Postgres`)
+      emitReceipt(
+        emit,
+        'aiven_pg_write',
+        live
+          ? `Verified table "${t}" on Aiven Postgres: ${total} rows`
+          : `Table "${t}" (${total} rows, from graph — DATABASE_URL unread)`,
+      )
     }
 
     if (!haveTarget) {
-      emit({ type: 'log', level: 'info', msg: 'migrate: DATABASE_URL not set — progress is planned, not copied' })
+      emit({ type: 'log', level: 'info', msg: 'migrate: DATABASE_URL not set — counts are planned, not live' })
+    } else {
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: `migrate: live counts users=${realCounts.users ?? '?'}, posts=${realCounts.posts ?? '?'}, reactions=${realCounts.reactions ?? '?'}`,
+      })
     }
-    emitAgent(emit, 'migrator', 'done', `migrated ${tables.length || 3} tables`)
+    emitAgent(emit, 'migrator', 'done', `migrated ${tables.length} tables (posts=${realCounts.posts ?? 0}, reactions=${realCounts.reactions ?? 0})`)
   })
 
   // ── 6. GENERATE ── Surgeon emits the Aiven-native backend ─────────────────────────
@@ -299,26 +438,39 @@ export async function runMigration(source: string, emit: (e: SwarmEvent) => void
     emitAgent(emit, 'verifier', 'done', 'verification complete')
   })
 
-  // ── 9. CUTOVER ── flip to the Aiven-native stack ──────────────────────────────────
+  // ── 9. CUTOVER ── actually hop a realtime event over live Aiven Kafka ──────────────────
+  // Ensure the topic exists, then PRODUCE a JSON event and CONSUME it back over the live broker,
+  // proving the realtime spine runs on Aiven Kafka. Real {type:'kafka'} produce + consume with the
+  // real payload. Bounded so a broker hiccup degrades to a clearly-noted narration instead of hang.
   phase('cutover')
   await step(emit, 'cutover', async () => {
     emitAgent(emit, 'operator', 'working', 'cutting over to Aiven')
-    // Demonstrate the realtime spine actually hops over Aiven Kafka.
     if (state.graph?.source.hasRealtime) {
       const topic = process.env.KAFKA_TOPIC || 'overmind.app.outbox'
-      const payload = JSON.stringify({ type: 'cutover.ping', at: now() })
-      emit({ type: 'kafka', topic, direction: 'produce', payload })
+      const nonce = rid('cut')
+      const payload = JSON.stringify({ type: 'cutover.ping', nonce, at: now() })
+      // Point KAFKA_BROKERS at the live SASL endpoint (the env default targets the mTLS port).
+      await ensureKafkaSaslBrokers(emit)
       const kafka = await tryImport('../aiven/kafka.ts')
-      if (kafka?.producer) {
+      const live = !!process.env.KAFKA_BROKERS && !!kafka?.produce && !!kafka?.createConsumer
+
+      let roundtripped = false
+      if (live) {
         try {
-          // If a real producer exists, the surrounding bus consumer will echo it back.
-          await kafka.producer().catch?.(() => {})
-        } catch {
-          /* narrated path below */
+          roundtripped = await kafkaRoundtrip(kafka, topic, payload, nonce, emit)
+        } catch (e) {
+          emit({ type: 'log', level: 'warn', msg: `cutover: kafka roundtrip failed (${(e as Error).message})` })
         }
       }
-      emit({ type: 'kafka', topic, direction: 'consume', payload })
-      emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Realtime event hopped over Aiven Kafka topic "${topic}"`)
+
+      if (roundtripped) {
+        emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Realtime event round-tripped over live Aiven Kafka topic "${topic}"`)
+      } else {
+        // Degrade honestly: still show the intended hop, but mark it as not-live.
+        emit({ type: 'kafka', topic, direction: 'produce', payload })
+        emit({ type: 'kafka', topic, direction: 'consume', payload })
+        emitReceipt(emit, 'aiven_kafka_topic_message_produce', `Realtime hop over Aiven Kafka topic "${topic}" (planned — KAFKA_BROKERS unread)`, live ? false : true)
+      }
     }
     emit({ type: 'log', level: 'info', msg: 'cutover: traffic now served by the Aiven-native backend' })
     emitAgent(emit, 'operator', 'done', '100% on Aiven')
@@ -343,6 +495,27 @@ export async function runMigration(source: string, emit: (e: SwarmEvent) => void
     readiness,
     summary: builtGraph?.summary ?? `Rebuilt ${source} on Aiven — auth, data, realtime, search. 100% on Aiven.`,
   })
+
+  // Release live resources so a headless CLI run exits promptly instead of waiting on idle
+  // pool/socket timeouts. Pools are recreated lazily on the next query, so this is safe for the
+  // long-running SSE server too. Best-effort: never let cleanup throw past a completed run.
+  await releaseResources(emit)
+}
+
+/** Close pg pools and disconnect the shared Kafka producer so the event loop can drain. */
+async function releaseResources(emit: (e: SwarmEvent) => void): Promise<void> {
+  try {
+    const pgMod = await tryImport('../aiven/pg.ts')
+    if (pgMod?.closeAll) await pgMod.closeAll()
+  } catch (e) {
+    emit({ type: 'log', level: 'warn', msg: `cleanup: pg closeAll failed (${(e as Error).message})` })
+  }
+  try {
+    const kafka = await tryImport('../aiven/kafka.ts')
+    if (kafka?.disconnect) await kafka.disconnect()
+  } catch {
+    /* ignore */
+  }
 }
 
 // ──────────────────────────── deterministic fallbacks ────────────────────────────

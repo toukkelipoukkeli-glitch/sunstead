@@ -2,6 +2,8 @@
 // Primary CTA "Deploy on Aiven" → console. Secondary "Watch the swarm" → console too,
 // landing the judge straight in Mission Control.
 
+import { ServiceIcon, Rocket, Activity, ArrowRight } from '../../icons.tsx'
+
 export function Hero() {
   return (
     <section className="lp-hero">
@@ -9,7 +11,7 @@ export function Hero() {
       <div className="lp-hero-inner">
         <a className="lp-eyebrow" href="#agents">
           <span className="lp-eyebrow-dot" />
-          New · Agents can sign up too →
+          New · Agents can sign up too <ArrowRight size={15} />
         </a>
 
         <h1 className="lp-hero-title">
@@ -27,10 +29,10 @@ export function Hero() {
 
         <div className="lp-hero-cta">
           <a className="lp-btn lp-btn-primary lp-btn-lg" href="#/app">
-            Deploy on Aiven
+            <Rocket size={17} /> Deploy on Aiven
           </a>
           <a className="lp-btn lp-btn-ghost lp-btn-lg" href="#/app">
-            ▸ Watch the swarm
+            <Activity size={17} /> Watch the swarm
           </a>
         </div>
 
@@ -50,10 +52,18 @@ export function Hero() {
 
         <div className="lp-logos">
           <span className="lp-logos-label">Rebuilds onto</span>
-          <span className="lp-logo-pill">Aiven for PostgreSQL®</span>
-          <span className="lp-logo-pill">Apache Kafka®</span>
-          <span className="lp-logo-pill">pgvector</span>
-          <span className="lp-logo-pill">Aiven Apps</span>
+          <span className="lp-logo-pill">
+            <ServiceIcon kind="postgres" size={22} /> Aiven for PostgreSQL®
+          </span>
+          <span className="lp-logo-pill">
+            <ServiceIcon kind="kafka" size={22} /> Apache Kafka®
+          </span>
+          <span className="lp-logo-pill">
+            <ServiceIcon kind="pgvector" size={22} /> pgvector
+          </span>
+          <span className="lp-logo-pill">
+            <ServiceIcon kind="app" size={22} /> Aiven Apps
+          </span>
         </div>
       </div>
     </section>

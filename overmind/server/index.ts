@@ -17,6 +17,8 @@ import {
   requireHumanOrAgent,
   type Actor,
 } from './workos.ts'
+import { ctoChat, getPgMetrics } from './cto-chat.ts'
+import { ensureDemoTenant, getTenant } from './tenants.ts'
 
 // ── Fan-out hub ──────────────────────────────────────────────────────────────────
 // Every connected control-room holds one emitter in this set. A run broadcasts each
@@ -112,6 +114,55 @@ app.post('/api/run', requireHumanOrAgent, async (c) => {
   return c.json({ ok: true, source, started: true, actor: who })
 })
 
+// ── Tenant infra snapshot (the CTO console's live left rail) ─────────────────────────
+app.get('/api/tenant/:id', async (c) => {
+  const id = c.req.param('id')
+  const tenant = await getTenant(id).catch(() => null)
+  const m: any = await getPgMetrics(id).catch(() => null)
+  // Shape into the fields the CTO console's left rail reads (rows/status/plan), keeping the raw extras.
+  let pg: any = null
+  if (m) {
+    const rows = Array.isArray(m.tables)
+      ? m.tables.reduce((s: number, t: any) => s + (Number(t.rows) || 0), 0)
+      : undefined
+    pg = {
+      status: 'running',
+      rows,
+      plan: 'startup-4',
+      cacheHitRatioPct: m.cacheHitRatioPct,
+      connections: m.connections,
+      maxConnections: m.maxConnections,
+      dbSizePretty: m.dbSizePretty,
+    }
+  }
+  return c.json({ tenant, pg })
+})
+
+// ── Talk to your Aiven CTO — a real agent reply, streamed over SSE ───────────────────
+// The founder never opens the Aiven dashboard; they ask their CTO agent, which reads their
+// live infra (overmind-pg / metrics) and answers. Advisory-first (proposes; never mutates).
+app.post('/api/cto/chat', async (c) => {
+  let body: any = {}
+  try {
+    body = await c.req.json()
+  } catch {
+    /* empty body */
+  }
+  const tenantId = String(body?.tenant ?? 'demo')
+  const message = String(body?.message ?? '').slice(0, 4000)
+  const history = Array.isArray(body?.history) ? body.history : []
+
+  return streamSSE(c, async (stream) => {
+    await ctoChat({ tenantId, message, history }, (chunk) => {
+      stream.writeSSE({ data: JSON.stringify(chunk) }).catch(() => {})
+    }).catch((e) => {
+      stream
+        .writeSSE({ data: JSON.stringify({ type: 'error', value: String((e as Error)?.message ?? e) }) })
+        .catch(() => {})
+    })
+  })
+})
+
 // ── Serve the built control-room in production ──────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   app.use('/*', serveStatic({ root: './dist' }))
@@ -124,9 +175,13 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
+// Ensure the demo tenant exists (maps to the live overmind-pg / overmind-kafka).
+ensureDemoTenant().catch((e) => console.warn('[tenant] ensureDemoTenant skipped:', (e as Error)?.message ?? e))
+
 authBanner()
 serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`⚡ Aiven Overmind — control plane on http://0.0.0.0:${info.port}`)
   console.log(`   GET  /api/health   GET /api/stream (SSE)   POST /api/run {source?}`)
   console.log(`   auth: GET /api/auth/login|callback|me|logout   POST /api/agents/register`)
+  console.log(`   cto:  GET /api/tenant/:id   POST /api/cto/chat (SSE)`)
 })

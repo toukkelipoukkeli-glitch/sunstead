@@ -12,7 +12,9 @@ import { Receipt } from '../shared/types.ts'
 
 const MCP_URL = 'https://mcp.aiven.live/mcp?allow_secrets=true'
 const MODEL = process.env.OVERMIND_AGENT_MODEL || 'claude-sonnet-4-5'
-const MAX_TURNS = Number(process.env.OVERMIND_AGENT_MAX_TURNS || 16)
+const MAX_TURNS = Number(process.env.OVERMIND_AGENT_MAX_TURNS || 6)
+/** Hard wall-clock budget for the whole agent run. The agent NEVER hangs the pipeline. */
+const TIMEOUT_MS = Number(process.env.OVERMIND_AGENT_TIMEOUT_MS || 18000)
 
 /** Sentinel error string callers match on to trigger the deterministic fallback. */
 export const UNAVAILABLE = 'aiven-agent-unavailable'
@@ -88,19 +90,56 @@ export async function runAivenAgent(
     throw new Error(UNAVAILABLE)
   }
 
+  // One hard deadline for the entire run. Every API call rides the same AbortController, and an
+  // independent timer trips it even if the SDK ignores the signal — so this can never hang.
+  //
+  // We anchor on an absolute `deadline` (now + budget) rather than a relative countdown. Each turn
+  // derives its remaining budget from this deadline. CRITICAL: that remaining value is what gets
+  // handed to the SDK's per-request `timeout` (and, internally, to `setTimeout(abort, ms)`), so it
+  // MUST stay strictly positive. If a slow turn pushes us past the deadline, `deadline - now` goes
+  // negative; passing that straight into setTimeout makes Node clamp it to 1ms and emit
+  // `TimeoutNegativeWarning: -<huge> is a negative number`. We clamp every remaining value to a
+  // positive floor and, once the budget is truly spent, bail to the fallback instead of firing a
+  // doomed request with a bogus timeout.
+  const deadline = Date.now() + TIMEOUT_MS
+  const remainingMs = () => deadline - Date.now()
+
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, Math.max(1, TIMEOUT_MS))
+
   let finalText = ''
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
+      if (timedOut) throw new Error(UNAVAILABLE)
+
+      // Remaining wall-clock budget for THIS request. If we're already at/past the deadline, stop
+      // now — never feed a non-positive duration to the SDK's setTimeout (the source of the
+      // TimeoutNegativeWarning). Clamp to a positive floor for the live case.
+      const left = remainingMs()
+      if (left <= 0) throw new Error(UNAVAILABLE)
+      const requestTimeout = Math.max(1, left)
+
       let res: any
       try {
-        res = await betaMessages.create({
-          model: MODEL,
-          max_tokens: 4096,
-          messages,
-          mcp_servers: mcpServers,
-          betas: ['mcp-client-2025-04-04'],
-        })
+        res = await betaMessages.create(
+          {
+            model: MODEL,
+            max_tokens: 4096,
+            messages,
+            mcp_servers: mcpServers,
+            betas: ['mcp-client-2025-04-04'],
+          },
+          // Pass an explicit, always-positive per-request timeout so the SDK never computes its own
+          // negative deadline from our abort signal. Share the controller for the hard wall too.
+          { signal: controller.signal, timeout: requestTimeout },
+        )
       } catch (e: any) {
+        // Timeout fired (abort): bail to the deterministic fallback so the pipeline keeps moving.
+        if (timedOut) throw new Error(UNAVAILABLE)
         // First-turn failure almost always means the connector/beta isn't supported here.
         if (turn === 0) throw new Error(UNAVAILABLE)
         // Mid-conversation transient error: stop cleanly with what we have.
@@ -153,6 +192,8 @@ export async function runAivenAgent(
     if (e?.message === UNAVAILABLE) throw e
     // Any other unexpected failure → fall back deterministically.
     throw new Error(UNAVAILABLE)
+  } finally {
+    clearTimeout(timer)
   }
 
   return finalText.trim()

@@ -136,14 +136,77 @@ function parseColumnsFromNode(node: BehaviorNode | undefined): ColumnModel[] | n
   return cols.length >= 2 ? cols : null
 }
 
-/** A reasonable default shape when we know nothing but the table name. */
+// Common column fragments reused by the name-aware shapes below.
+const ID_COL: ColumnModel = { name: 'id', type: 'uuid', nullable: false, default: 'gen_random_uuid()', isPrimaryKey: true }
+const CREATED_AT_COL: ColumnModel = { name: 'created_at', type: 'timestamptz', nullable: false, default: 'now()' }
+
+/**
+ * Name-aware schema shapes for the common Lovable/Supabase social-app tables. The
+ * BehaviorGraph the contract hands us only carries table *names* + a "N cols" summary
+ * (no column DDL), so when recon couldn't recover real columns we'd otherwise emit a
+ * generic {owner_id, body, data} shape that loses the app's real surface — including the
+ * pgvector embedding column that the whole semantic-search path depends on.
+ *
+ * These shapes mirror demo/pulsewall-aiven + demo/live-hype-wall so the generated backend
+ * references the *real* columns (author_id, author_handle, image_url, reaction_count,
+ * embedding, post_id, emoji, …) deterministically — no LLM, no source DB required. The LLM
+ * pass can still override per table when ANTHROPIC_API_KEY is set; this is the floor.
+ */
+const KNOWN_SHAPES: Record<string, () => ColumnModel[]> = {
+  posts: () => [
+    ID_COL,
+    { name: 'author_id', type: 'uuid', nullable: false, references: 'users(id)' },
+    { name: 'author_handle', type: 'text', nullable: false },
+    { name: 'body', type: 'text', nullable: false },
+    { name: 'image_url', type: 'text', nullable: true },
+    { name: 'reaction_count', type: 'int', nullable: false, default: '0' },
+    { name: 'embedding', type: 'vector(1536)', nullable: true },
+    CREATED_AT_COL,
+  ],
+  reactions: () => [
+    ID_COL,
+    { name: 'post_id', type: 'uuid', nullable: false, references: 'posts(id)' },
+    { name: 'user_id', type: 'uuid', nullable: false, references: 'users(id)' },
+    { name: 'emoji', type: 'text', nullable: false, default: `'🔥'` },
+    CREATED_AT_COL,
+  ],
+  comments: () => [
+    ID_COL,
+    { name: 'post_id', type: 'uuid', nullable: false, references: 'posts(id)' },
+    { name: 'author_id', type: 'uuid', nullable: false, references: 'users(id)' },
+    { name: 'body', type: 'text', nullable: false },
+    CREATED_AT_COL,
+  ],
+  messages: () => [
+    ID_COL,
+    { name: 'author_id', type: 'uuid', nullable: false, references: 'users(id)' },
+    { name: 'body', type: 'text', nullable: false },
+    CREATED_AT_COL,
+  ],
+  profiles: () => [
+    ID_COL,
+    { name: 'user_id', type: 'uuid', nullable: false, references: 'users(id)' },
+    { name: 'handle', type: 'text', nullable: false },
+    { name: 'avatar_url', type: 'text', nullable: true },
+    { name: 'bio', type: 'text', nullable: true },
+    CREATED_AT_COL,
+  ],
+}
+
+/**
+ * A reasonable default shape when we know nothing but the table name. Prefers a
+ * name-aware KNOWN_SHAPES match (real columns for the common social-app tables), and
+ * falls back to a generic owner/body/jsonb shape for anything unrecognised.
+ */
 function defaultColumns(table: string): ColumnModel[] {
+  const known = KNOWN_SHAPES[table]
+  if (known) return known()
   return [
-    { name: 'id', type: 'uuid', nullable: false, default: 'gen_random_uuid()', isPrimaryKey: true },
+    ID_COL,
     { name: 'owner_id', type: 'uuid', nullable: true, references: 'users(id)' },
     { name: 'body', type: 'text', nullable: true },
     { name: 'data', type: 'jsonb', nullable: true, default: `'{}'::jsonb` },
-    { name: 'created_at', type: 'timestamptz', nullable: false, default: 'now()' },
+    CREATED_AT_COL,
   ]
 }
 

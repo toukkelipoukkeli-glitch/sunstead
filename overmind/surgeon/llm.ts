@@ -17,7 +17,8 @@ export function llmEnabled(): boolean {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-const MODEL = process.env.SURGEON_MODEL || 'claude-3-5-haiku-latest'
+// claude-3-5-haiku-* was retired 2026-02-19; use the current default model.
+const MODEL = process.env.SURGEON_MODEL || 'claude-opus-4-8'
 
 interface LlmColumn {
   name?: string

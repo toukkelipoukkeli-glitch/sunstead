@@ -1,0 +1,64 @@
+/* ════════════════════════════════════════════════════════════════════════
+   AIVEN REAL DESIGN TOKENS — extracted verbatim from aiven.io's CSS bundle
+   (/remix-assets/global-*.css) + the Aiven console. This is the ground truth;
+   the whole Overmind UI must use THESE values. No invented colors.
+   Fonts: headings = Funnel Display · body/UI = Inter · mono = Geist Mono
+   (all Google Fonts — load in index.html).
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* neutrals */
+  --av-black: #05080f;
+  --av-near-black: #1a1a1a;     /* primary button bg / strong text (#1d1d1f also seen) */
+  --av-white: #ffffff;
+  --av-grey-0: #f7f7fa;
+  --av-grey-5: #fafafa;
+  --av-grey-10: #f4f4f4;
+  --av-grey-20: #ebebeb;        /* borders */
+  --av-grey-30: #d6d6d6;        /* stronger borders */
+  --av-grey-40: #919294;        /* muted text */
+  --av-grey-50: #68696b;
+  --av-grey-60: #444547;
+  --av-grey-70: #2d2e30;        /* body text */
+  --av-grey-80: #0d0e10;
+
+  /* PRIMARY BRAND — green + teal (the real Aiven accent, NOT red) */
+  --av-green-0: #effef4;
+  --av-green-10: #d9ffe9;
+  --av-green-50: #1fdc6f;       /* vivid brand green */
+  --av-green-60: #0ab060;       /* primary green */
+  --av-green-70: #088247;       /* green text/links on light */
+  --av-green-80: #135d39;
+
+  --av-teal-0: #f0fefe;
+  --av-teal-10: #d9f9f8;
+  --av-teal-40: #2ed0cd;
+  --av-teal-50: #1bb2b0;
+  --av-teal-60: #007b78;        /* console link teal */
+
+  /* success "Running" badge */
+  --av-success-bg: #ebfbee;     /* green-0 */
+  --av-success-fg: #006f00;     /* green-100 */
+  --av-success-mid: #267936;    /* green-90 */
+
+  /* rainbow accents — for the hexagon logo, service icons, highlights */
+  --av-deep-blue: #6f64ff;
+  --av-deep-blue-strong: #3c42d0;
+  --av-light-blue: #0b9ecf;
+  --av-light-blue-strong: #0c7dae;
+  --av-purple: #df56f2;
+  --av-purple-strong: #c224d5;
+  --av-orange: #fe7239;
+  --av-orange-strong: #ff5a00;
+  --av-yellow: #fdcd12;
+  --av-red: #da3633;
+
+  /* per-service icon colors (Aiven console) */
+  --av-svc-postgres: var(--av-light-blue);
+  --av-svc-kafka: var(--av-purple);
+  --av-svc-vector: var(--av-deep-blue);
+
+  /* fonts */
+  --av-font-heading: "Funnel Display", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --av-font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --av-font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}

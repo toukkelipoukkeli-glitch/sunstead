@@ -1,4 +1,30 @@
 import type { RunPhase } from '../../../shared/types.ts'
+import type { ReactNode } from 'react'
+import {
+  Search,
+  Network,
+  Layers,
+  Server,
+  Database,
+  Sparkle,
+  Shield,
+  Check,
+  ArrowRight,
+  Activity,
+} from '../../icons.tsx'
+
+const STEP_ICON: Record<Exclude<RunPhase, 'done' | 'error'>, ReactNode> = {
+  recon: <Search size={15} />,
+  graph: <Network size={15} />,
+  plan: <Layers size={15} />,
+  provision: <Server size={15} />,
+  migrate: <Database size={15} />,
+  generate: <Sparkle size={15} />,
+  heal: <Shield size={15} />,
+  verify: <Check size={15} />,
+  cutover: <ArrowRight size={15} />,
+  operate: <Activity size={15} />,
+}
 
 // The swarm pipeline. Keys are the REAL RunPhase values from shared/types.ts — the
 // same phases Mission Control streams over SSE — so the marketing page and the live
@@ -61,7 +87,9 @@ export function HowItWorks() {
   return (
     <section className="lp-section" id="how">
       <div className="lp-section-head">
-        <span className="lp-kicker">How it works</span>
+        <span className="lp-kicker">
+          <Network size={14} /> How it works
+        </span>
         <h2 className="lp-h2">One swarm. Ten phases. Fully autonomous.</h2>
         <p className="lp-lede">
           Overmind isn&apos;t a wizard you babysit. It&apos;s a bounded agent swarm — typed tools, a
@@ -79,6 +107,7 @@ export function HowItWorks() {
             </div>
             <div className="lp-step-body">
               <h3 className="lp-step-title">
+                <span className="lp-step-ico">{STEP_ICON[step.phase]}</span>
                 {step.title}
                 <span className="lp-step-phase">{step.phase}</span>
               </h3>

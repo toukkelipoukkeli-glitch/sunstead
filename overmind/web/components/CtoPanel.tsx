@@ -1,4 +1,5 @@
 import type { CtoRecommendation } from '../../shared/types.ts'
+import { Gauge, ArrowRight } from '../icons.tsx'
 
 /**
  * Zone 3f — the persistent CTO operator. It never leaves: reads live Aiven
@@ -8,7 +9,12 @@ export function CtoPanel({ recs }: { recs: CtoRecommendation[] }) {
   return (
     <div className="panel">
       <div className="panel-h">
-        <h3>CTO OPERATOR</h3>
+        <h3>
+          <span className="h-ico">
+            <Gauge size={15} />
+          </span>
+          CTO operator
+        </h3>
         <span className="meta">always-on · {recs.length} moves</span>
       </div>
 
@@ -26,7 +32,10 @@ export function CtoPanel({ recs }: { recs: CtoRecommendation[] }) {
                 {r.metric && <span className="rec-metric">{r.metric}</span>}
               </div>
               <div className="rec-detail">{r.detail}</div>
-              <div className="rec-action">{r.action}</div>
+              <div className="rec-action">
+                <ArrowRight size={14} />
+                {r.action}
+              </div>
             </div>
           ))}
         </div>

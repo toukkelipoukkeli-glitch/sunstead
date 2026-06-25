@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { Receipt, GeneratedArtifact } from '../../shared/types.ts'
+import { Activity, Check, Bolt, FileCode, Layers } from '../icons.tsx'
 
 export interface LogEntry {
   id: number
   level: 'info' | 'warn' | 'error'
   msg: string
+  ts?: string
 }
 
 /**
@@ -26,19 +28,23 @@ export function FeedPanel({
   return (
     <div className="panel feed-panel">
       <div className="panel-h">
-        <h3>EVIDENCE FEED</h3>
-        <span className="meta">{receipts.filter((r) => r.ok).length} receipts ok</span>
+        <h3>
+          <span className="feed-live" /> Evidence feed
+        </h3>
+        <span className="meta">
+          {receipts.filter((r) => r.ok).length}/{receipts.length || '—'} receipts ok
+        </span>
       </div>
 
       <div className="feed-tabs">
         <button className={`feed-tab ${tab === 'receipts' ? 'on' : ''}`} onClick={() => setTab('receipts')}>
-          Receipts<span className="badge">{receipts.length}</span>
+          <Check size={14} /> Receipts<span className="badge">{receipts.length}</span>
         </button>
         <button className={`feed-tab ${tab === 'log' ? 'on' : ''}`} onClick={() => setTab('log')}>
-          Log<span className="badge">{logs.length}</span>
+          <Activity size={14} /> Log<span className="badge">{logs.length}</span>
         </button>
         <button className={`feed-tab ${tab === 'artifacts' ? 'on' : ''}`} onClick={() => setTab('artifacts')}>
-          Artifacts<span className="badge">{artifacts.length}</span>
+          <Layers size={14} /> Artifacts<span className="badge">{artifacts.length}</span>
         </button>
       </div>
 
@@ -47,7 +53,9 @@ export function FeedPanel({
           {receipts.length === 0 && <div className="empty pulse-wait">Every Aiven MCP action lands here…</div>}
           {receipts.map((r) => (
             <div className="receipt" key={r.id}>
-              <span className={`ok-dot ${r.ok ? 'ok' : 'bad'}`} />
+              <span className={`ok-dot ${r.ok ? 'ok' : 'bad'}`}>
+                {r.ok ? <Check size={12} /> : <Bolt size={12} />}
+              </span>
               <span className="action">{r.action}</span>
               <span className="rs">{r.summary}</span>
               <span className="rt mono">{fmt(r.ts)}</span>
@@ -58,9 +66,10 @@ export function FeedPanel({
 
       {tab === 'log' && (
         <div className="feed">
-          {logs.length === 0 && <div className="empty">Swarm narration will stream here…</div>}
+          {logs.length === 0 && <div className="empty pulse-wait">Swarm narration will stream here…</div>}
           {logs.map((l) => (
             <div className={`logline ${l.level}`} key={l.id}>
+              {l.ts && <span className="ltime mono">{fmt(l.ts)}</span>}
               <span className="lvl">{l.level}</span>
               <span className="lmsg">{l.msg}</span>
             </div>
@@ -76,6 +85,9 @@ export function FeedPanel({
           <div className="artifacts">
             {artifacts.map((a) => (
               <div className="artifact" key={a.path}>
+                <span className="a-ico">
+                  <FileCode size={15} />
+                </span>
                 <span className="akind">{a.kind}</span>
                 <span className="apath">{a.path}</span>
                 {a.healAttempts > 0 && <span className="heals">⟲{a.healAttempts}</span>}

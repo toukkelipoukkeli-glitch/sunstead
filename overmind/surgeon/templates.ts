@@ -242,7 +242,7 @@ export async function embed(text: string): Promise<number[] | null> {
       body: JSON.stringify({ model: 'text-embedding-3-small', input: text }),
     })
     if (!res.ok) { console.error('[embed] failed', res.status, await res.text()); return null }
-    const data = await res.json()
+    const data = (await res.json()) as { data: { embedding: number[] }[] }
     return data.data[0].embedding as number[]
   } catch (e) { console.error('[embed] error', e); return null }
 }

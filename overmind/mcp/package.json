@@ -1,0 +1,15 @@
+{
+  "name": "overmind-mcp",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Overmind MCP server — the agentic operator layer that extends the Aiven MCP. Wraps Overmind's live Lovable→Aiven migration engine + the always-on Aiven CTO as agent-callable tools over stdio.",
+  "scripts": {
+    "start": "tsx server.ts",
+    "test": "tsx test-client.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  }
+}

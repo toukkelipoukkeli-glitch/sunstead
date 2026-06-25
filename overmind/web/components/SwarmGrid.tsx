@@ -1,4 +1,39 @@
 import type { AgentActivity, AgentRole, AgentStatus } from '../../shared/types.ts'
+import {
+  Network,
+  Sparkle,
+  Search,
+  Layers,
+  Server,
+  Shield,
+  Database,
+  Activity,
+  Check,
+  Gauge,
+} from '../icons.tsx'
+
+const ROLE_ICON: Record<AgentRole, React.ReactNode> = {
+  orchestrator: <Sparkle size={13} />,
+  recon: <Search size={13} />,
+  architect: <Layers size={13} />,
+  operator: <Server size={13} />,
+  surgeon: <Shield size={13} />,
+  migrator: <Database size={13} />,
+  healer: <Activity size={13} />,
+  verifier: <Check size={13} />,
+  cto: <Gauge size={13} />,
+}
+
+// relative "Ns ago" for the last activity ping — keeps the swarm feeling live
+function rel(ts: string): string {
+  const d = new Date(ts).getTime()
+  if (isNaN(d)) return ''
+  const s = Math.max(0, Math.round((Date.now() - d) / 1000))
+  if (s < 1) return 'now'
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  return `${m}m ago`
+}
 
 // Canonical swarm roster — agents light up as activity events arrive, but the
 // full mesh is always visible so judges see the whole organism.
@@ -49,20 +84,42 @@ export function SwarmGrid({ agents }: { agents: Record<string, AgentActivity> })
   return (
     <div className="panel">
       <div className="panel-h">
-        <h3>THE SWARM</h3>
+        <h3>
+          <span className="h-ico">
+            <Network size={15} />
+          </span>
+          The Swarm
+        </h3>
         <span className="meta">
           {live.filter((a) => a.status === 'working').length} working · {live.length} active
         </span>
       </div>
+      {(() => {
+        const err = live.filter((a) => a.status === 'error').length
+        const done = live.filter((a) => a.status === 'done').length
+        const work = live.filter((a) => a.status === 'working').length
+        if (!live.length) return null
+        return (
+          <div className="swarm-stat">
+            <span className="ss work">{work} working</span>
+            <span className="ss done">{done} done</span>
+            {err > 0 && <span className="ss err">{err} error</span>}
+          </div>
+        )
+      })()}
       <div className="swarm-grid">
         {cells.map((c) => {
           const status: AgentStatus = c.act?.status ?? 'idle'
           return (
-            <div className="agent" data-status={status} key={c.key}>
+            <div className="agent" data-status={status} data-role={c.role} key={c.key}>
               <span className="pill" />
-              <div className="role">{c.label}</div>
+              <div className="agent-head">
+                <span className="agent-ico">{ROLE_ICON[c.role]}</span>
+                <div className="role">{c.label}</div>
+              </div>
               <div className="task">{c.act?.task ?? 'standing by'}</div>
               {c.act?.detail && <div className="detail mono">{c.act.detail}</div>}
+              {c.act?.ts && <div className="agent-ts mono">{rel(c.act.ts)}</div>}
             </div>
           )
         })}

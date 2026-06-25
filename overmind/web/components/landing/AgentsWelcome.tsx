@@ -34,12 +34,16 @@ const { access_token } = await fetch(token_url, {
 // Claims: sub = agent identity · org_id = tenant · scopes. Revoke one
 // agent's credentials and only that agent is cut off. Users untouched.`
 
+import { Check, Lock, Plus, Shield } from '../../icons.tsx'
+
 export function AgentsWelcome() {
   return (
     <section className="lp-section lp-agents" id="agents">
       <div className="lp-agents-grid">
         <div className="lp-agents-copy">
-          <span className="lp-kicker lp-kicker-hot">Agents welcome</span>
+          <span className="lp-kicker lp-kicker-hot">
+            <Lock size={14} /> Agents welcome
+          </span>
           <h2 className="lp-h2">
             The first Aiven product where <span className="lp-grad">agents are first-class
             users.</span>
@@ -54,28 +58,36 @@ export function AgentsWelcome() {
 
           <ul className="lp-agents-points">
             <li>
-              <span className="lp-tick" />
+              <span className="lp-tick">
+                <Check size={13} />
+              </span>
               <div>
                 <strong>Per-agent identity.</strong> Each agent is its own WorkOS{' '}
                 <em>M2M Application</em> — compromise one, revoke just that one.
               </div>
             </li>
             <li>
-              <span className="lp-tick" />
+              <span className="lp-tick">
+                <Check size={13} />
+              </span>
               <div>
                 <strong>Scoped &amp; short-lived.</strong> Client-credentials grant → a 1-hour JWT,
                 carrying <code>sub</code>, <code>org_id</code> and scopes narrower than any human.
               </div>
             </li>
             <li>
-              <span className="lp-tick" />
+              <span className="lp-tick">
+                <Check size={13} />
+              </span>
               <div>
                 <strong>Verified offline.</strong> Overmind checks the signature against the WorkOS
                 JWKS — no round-trip on the hot path.
               </div>
             </li>
             <li>
-              <span className="lp-tick" />
+              <span className="lp-tick">
+                <Check size={13} />
+              </span>
               <div>
                 <strong>Standards, not lock-in.</strong> Built toward WorkOS{' '}
                 <a href="https://workos.com/auth-md" target="_blank" rel="noreferrer">
@@ -88,7 +100,7 @@ export function AgentsWelcome() {
 
           <div className="lp-hero-cta">
             <a className="lp-btn lp-btn-primary" href="#/app">
-              Register an agent
+              <Plus size={16} /> Register an agent
             </a>
             <a
               className="lp-btn lp-btn-ghost"
@@ -96,7 +108,7 @@ export function AgentsWelcome() {
               target="_blank"
               rel="noreferrer"
             >
-              Read the protocol
+              <Shield size={16} /> Read the protocol
             </a>
           </div>
         </div>

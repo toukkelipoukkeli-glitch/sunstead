@@ -3,6 +3,8 @@
 // "Sign in" / "Start free" point at the WorkOS auth routes the auth agent builds;
 // if those 404 in dev they degrade to the console (handled in authHref()).
 
+import { Logo, ArrowRight } from '../../icons.tsx'
+
 function authHref(path: string): string {
   // In dev the WorkOS routes may not exist yet → fall back to the console.
   // We optimistically link to the real route; onError below swaps to the console.
@@ -15,16 +17,7 @@ export function Nav() {
       <div className="lp-nav-inner">
         <a className="lp-wordmark" href="#/">
           <span className="lp-logo-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <path
-                d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-              <path d="M12 7 L17 9.5 V14.5 L12 17 L7 14.5 V9.5 Z" fill="currentColor" opacity="0.9" />
-            </svg>
+            <Logo size={24} />
           </span>
           <span className="lp-logo-text">
             Aiven<span className="lp-logo-divider">/</span>
@@ -37,7 +30,7 @@ export function Nav() {
           <a href="#agents">Agents</a>
           <a href="#deploy">Get it on Aiven</a>
           <a className="lp-nav-console" href="#/app">
-            Console
+            Console <ArrowRight size={15} />
           </a>
         </nav>
 

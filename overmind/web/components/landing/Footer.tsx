@@ -1,4 +1,5 @@
 // Aiven-style multi-column footer.
+import { Logo } from '../../icons.tsx'
 
 export function Footer() {
   return (
@@ -7,16 +8,7 @@ export function Footer() {
         <div className="lp-footer-brand">
           <a className="lp-wordmark" href="#/">
             <span className="lp-logo-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path
-                  d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinejoin="round"
-                />
-                <path d="M12 7 L17 9.5 V14.5 L12 17 L7 14.5 V9.5 Z" fill="currentColor" />
-              </svg>
+              <Logo size={22} />
             </span>
             <span className="lp-logo-text">
               Aiven<span className="lp-logo-divider">/</span>

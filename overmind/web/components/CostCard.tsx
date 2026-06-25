@@ -1,3 +1,5 @@
+import { Coins, ArrowRight, Logo } from '../icons.tsx'
+
 export interface CostState {
   supabaseUsd: number
   aivenUsd: number
@@ -16,7 +18,12 @@ export function CostCard({ cost }: { cost: CostState | null }) {
   return (
     <div className="panel">
       <div className="panel-h">
-        <h3>COST</h3>
+        <h3>
+          <span className="h-ico">
+            <Coins size={15} />
+          </span>
+          Cost
+        </h3>
         <span className="meta">monthly · estimated</span>
       </div>
 
@@ -29,16 +36,20 @@ export function CostCard({ cost }: { cost: CostState | null }) {
               <div className="lbl">Supabase</div>
               <div className="amt">${sup.toLocaleString()}</div>
             </div>
-            <div className="arrow">→</div>
+            <div className="arrow">
+              <ArrowRight size={18} />
+            </div>
             <div className="side aiv">
-              <div className="lbl">Aiven</div>
+              <div className="lbl">
+                <Logo size={14} /> Aiven
+              </div>
               <div className="amt">${aiv.toLocaleString()}</div>
             </div>
           </div>
           {save > 0 && (
             <div style={{ textAlign: 'center' }}>
               <span className="cost-save">
-                ↓ ${save.toLocaleString()}/mo saved · {pct}% less
+                ${save.toLocaleString()}/mo saved · {pct}% less
               </span>
             </div>
           )}
