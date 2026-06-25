@@ -23,7 +23,7 @@ import type {
 import { AIVEN_PROJECT, hasAnthropic, hasAivenToken } from './env.ts'
 import { healLoop } from './heal.ts'
 import { ctoTick } from './cto.ts'
-import { cloneRepo } from './clone.ts'
+import { cloneRepo, cloneRepoAuthed } from './clone.ts'
 import {
   TARGET_SERVICE,
   targetConnInfo,
@@ -32,7 +32,17 @@ import {
   verifyParity,
   sourceConn,
 } from './migrator.ts'
+import { importCsvSources, type CsvSource } from './csv-import.ts'
 import { openMigrationPR } from './pr.ts'
+
+/** Extra inputs that generalize WHERE the migrated data comes from (beyond the seeded demo source). */
+export interface MigrationOpts {
+  mode?: RunMode
+  /** A user-provided SOURCE Postgres connection string (own-Supabase path → DB→DB copy). SECRET — never logged. */
+  sourceConnString?: string
+  /** CSV files exported from the source app (Lovable path → CSV import). Contents are never logged. */
+  csvSources?: CsvSource[]
+}
 
 // ──────────────────────────── small helpers ────────────────────────────
 
@@ -265,16 +275,23 @@ async function resolveTargetService(
 export async function runMigration(
   source: string,
   emit: (e: SwarmEvent) => void,
-  opts?: { mode?: RunMode },
+  opts?: MigrationOpts,
 ): Promise<void> {
   if (opts?.mode === 'analyze') {
     return runAnalyzeMigration(source, emit)
   }
-  return runDemoMigration(source, emit)
+  return runDemoMigration(source, emit, opts)
 }
 
-/** The warm demo path — unchanged behavior the live demo depends on. */
-async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): Promise<void> {
+/**
+ * The migrate path. Source of the migrated rows is chosen, in priority order:
+ *   (a) opts.csvSources present  → importCsvSources (Lovable export → CSV import)
+ *   (b) opts.sourceConnString    → copyData FROM the user's source DB (own-Supabase → DB→DB copy)
+ *   (c) neither                  → the CURRENT seeded default (overmind-pg via DATABASE_URL), UNCHANGED.
+ *
+ * The provision / verify / cutover / operate arc is unchanged — only WHERE the data comes from varies.
+ */
+async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void, opts?: MigrationOpts): Promise<void> {
   const run: MigrationRun = {
     id: rid('run'),
     source,
@@ -304,20 +321,36 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     targetHost?: string
     copied: { table: string; source: number; copied: number; ok: boolean }[]
     prUrl: string | null
-  } = { graph: null, targetConn: null, targetService: TARGET_SERVICE, copied: [], prUrl: null }
+    /** which data source the migrate phase actually used (drives how verify reports parity). */
+    dataSource: 'csv' | 'source-db' | 'seeded'
+  } = { graph: null, targetConn: null, targetService: TARGET_SERVICE, copied: [], prUrl: null, dataSource: 'seeded' }
   let stack: AivenStack = { project: AIVEN_PROJECT }
   let artifacts: GeneratedArtifact[] = []
+
+  // Demo path: REALLY clone the source repo (live-hype-wall, private) via the authed gh CLI so recon
+  // scans a fresh checkout — not the bundled local copy. Falls back to the passed `source` on failure.
+  let scanDir = source
+  let repoCleanup: (() => void) | null = null
+  try {
+    const c = await cloneRepoAuthed(GRADUATE_REPO_URL)
+    scanDir = c.dir
+    repoCleanup = c.cleanup
+    run.source = GRADUATE_REPO_URL
+    emitReceipt(emit, 'git_clone', `Cloned ${GRADUATE_REPO_URL} — fresh checkout`)
+  } catch (e) {
+    emit({ type: 'log', level: 'warn', msg: `recon: clone failed (${(e as Error).message}) — scanning bundled copy` })
+  }
 
   // ── 1. RECON ── scan repo + introspect source DB ────────────────────────────────
   phase('recon')
   await step(emit, 'recon', async () => {
-    emitAgent(emit, 'recon', 'working', 'scanning source app', source)
+    emitAgent(emit, 'recon', 'working', 'scanning source app', run.source)
     const core = await tryImport('../core/scan.ts')
     if (core?.scanRepo) {
-      scan = await core.scanRepo(source)
-      emit({ type: 'log', level: 'info', msg: `recon: scanned ${source}` })
+      scan = await core.scanRepo(scanDir)
+      emit({ type: 'log', level: 'info', msg: `recon: scanned ${run.source}` })
     } else {
-      scan = fallbackScan(source)
+      scan = fallbackScan(scanDir)
       emit({ type: 'log', level: 'warn', msg: 'recon: core/scan unavailable — using heuristic scan' })
     }
 
@@ -336,6 +369,8 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     }
     emitAgent(emit, 'recon', 'done', 'recon complete')
   })
+  // The cloned checkout is only needed for recon's scan — drop the temp dir now.
+  repoCleanup?.()
 
   // ── 2. GRAPH ── classify every behavior, compute readiness ───────────────────────
   phase('graph')
@@ -436,15 +471,13 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
   await step(emit, 'migrate', async () => {
     const svc = state.targetService
     emitAgent(emit, 'migrator', 'working', `migrating real data → ${svc}`)
-    emit({ type: 'log', level: 'info', msg: `migrate: source rows come from the seeded source DB (overmind-pg via DATABASE_URL) — the repo carries schema + code, not live rows` })
-    const src = sourceConn()
-    if (!src) {
-      emit({ type: 'log', level: 'warn', msg: 'migrate: no DATABASE_URL (source) — cannot move data' })
-      emitAgent(emit, 'migrator', 'error', 'source DB unavailable')
-      return
-    }
 
-    // Resolve the target's real connection string (MCP secrets → REST fallback).
+    // Decide the data source, in priority order: CSV export → user source DB → seeded default.
+    const csvSources = opts?.csvSources?.filter((s) => s && typeof s.csvText === 'string' && s.tableName) ?? []
+    const useCsv = csvSources.length > 0
+    const userSrc = typeof opts?.sourceConnString === 'string' && opts.sourceConnString.trim() ? opts.sourceConnString.trim() : null
+
+    // Resolve the target's real connection string (MCP secrets → REST fallback). Needed by every path.
     state.targetConn = await targetConnInfo(emit, svc)
     if (!state.targetConn) {
       emit({ type: 'log', level: 'warn', msg: `migrate: could not resolve ${svc} credentials — skipping data copy` })
@@ -452,7 +485,45 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
       return
     }
 
-    // Apply schema to the fresh service (idempotent).
+    // ── (a) CSV import path (Lovable export — the only universal way out of a hidden DB) ──
+    if (useCsv) {
+      state.dataSource = 'csv'
+      emit({ type: 'log', level: 'info', msg: `migrate: source is ${csvSources.length} CSV file(s) exported from your app — importing into ${svc}` })
+      const results = await importCsvSources(state.targetConn, csvSources, emit)
+      // Map CSV results into the shared {table,source,copied,ok} shape the rest of the run reads.
+      state.copied = results.map((r) => ({ table: r.table, source: r.source, copied: r.copied, ok: r.ok }))
+      for (const r of results) {
+        emitReceipt(
+          emit,
+          'aiven_pg_write',
+          r.ok ? `Imported ${r.copied} rows into ${svc}.${r.table} from CSV` : `CSV import into ${svc}.${r.table} incomplete (${r.copied}/${r.source})`,
+          r.ok,
+        )
+      }
+      const ok = results.length > 0 && results.every((r) => r.ok)
+      const totalCopied = results.reduce((n, r) => n + r.copied, 0)
+      emit({ type: 'log', level: ok ? 'info' : 'warn', msg: `migrate: imported ${totalCopied} rows from CSV into ${svc} across ${results.length} table(s)` })
+      emitAgent(emit, 'migrator', ok ? 'done' : 'error', ok ? `CSV data live on ${svc}` : 'CSV import incomplete')
+      return
+    }
+
+    // ── (b)/(c) DB→DB copy. Source is the user's connection string if given, else the seeded default. ──
+    const src = userSrc ?? sourceConn()
+    state.dataSource = userSrc ? 'source-db' : 'seeded'
+    if (userSrc) {
+      // NEVER log the connection string itself — only that a user source was used.
+      emit({ type: 'log', level: 'info', msg: `migrate: source is YOUR provided source database (connection string supplied) — copying into ${svc}` })
+    } else {
+      emit({ type: 'log', level: 'info', msg: `migrate: source rows come from the seeded source DB (overmind-pg via DATABASE_URL) — the repo carries schema + code, not live rows` })
+    }
+    if (!src) {
+      emit({ type: 'log', level: 'warn', msg: 'migrate: no source database available — cannot move data' })
+      emitAgent(emit, 'migrator', 'error', 'source DB unavailable')
+      return
+    }
+
+    // Apply the PulseWall schema to the fresh service (idempotent). Only meaningful for the DB→DB
+    // PulseWall-shaped copy; the CSV path creates its own tables above.
     const schema = await applyTargetSchema(state.targetConn, emit, svc)
     if (schema.ok) {
       emitReceipt(emit, 'aiven_pg_query', `Applied PulseWall schema to ${svc} (${schema.statements} statements: pgvector, tables, match_posts, triggers)`)
@@ -468,7 +539,9 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
         emit,
         'aiven_pg_write',
         r.ok
-          ? `Copied ${r.copied} rows into ${svc}.${r.table}${r.table === 'posts' ? ' (incl. pgvector embeddings)' : ''}`
+          ? userSrc
+            ? `Copied ${r.copied} rows from your source DB into ${svc}.${r.table}${r.table === 'posts' ? ' (incl. pgvector embeddings)' : ''}`
+            : `Copied ${r.copied} rows into ${svc}.${r.table}${r.table === 'posts' ? ' (incl. pgvector embeddings)' : ''}`
           : `Copy into ${svc}.${r.table} incomplete (${r.copied}/${r.source})`,
         r.ok,
       )
@@ -478,7 +551,7 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
     emit({
       type: 'log',
       level: ok ? 'info' : 'warn',
-      msg: `migrate: moved ${totalCopied} live rows into ${svc} (users=${results.find((r) => r.table === 'users')?.copied ?? 0}, posts=${results.find((r) => r.table === 'posts')?.copied ?? 0}, reactions=${results.find((r) => r.table === 'reactions')?.copied ?? 0})`,
+      msg: `migrate: moved ${totalCopied} ${userSrc ? 'rows from your source DB' : 'live rows'} into ${svc} (users=${results.find((r) => r.table === 'users')?.copied ?? 0}, posts=${results.find((r) => r.table === 'posts')?.copied ?? 0}, reactions=${results.find((r) => r.table === 'reactions')?.copied ?? 0})`,
     })
     emitAgent(emit, 'migrator', ok ? 'done' : 'error', ok ? `real data live on ${svc}` : 'copy incomplete')
   })
@@ -517,7 +590,33 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
   phase('verify')
   await step(emit, 'verify', async () => {
     emitAgent(emit, 'verifier', 'working', 'verifying real row-count parity')
-    const src = sourceConn()
+
+    // CSV path has no live source DB to compare against — verify against what we parsed vs. what
+    // landed in the target (the migrate phase already counted both), per table.
+    if (state.dataSource === 'csv') {
+      for (const r of state.copied) {
+        emit({
+          type: 'validation',
+          check: {
+            name: `row-count parity: ${r.table}`,
+            status: r.ok ? 'pass' : 'fail',
+            expected: `${r.source} rows (CSV export)`,
+            actual: `${r.copied} rows imported into ${state.targetService}`,
+          },
+        })
+      }
+      const allOk = state.copied.length > 0 && state.copied.every((r) => r.ok)
+      emit({
+        type: 'log',
+        level: allOk ? 'info' : 'warn',
+        msg: `verify: CSV import parity ${allOk ? 'PASS' : 'FAIL'} — ${state.copied.map((r) => `${r.table} ${r.copied}/${r.source}`).join(', ')}`,
+      })
+      emitAgent(emit, 'verifier', 'done', 'verification complete (CSV parity)')
+      return
+    }
+
+    // DB→DB paths (seeded default OR user-provided source DB): compare source vs. target counts.
+    const src = state.dataSource === 'source-db' ? (opts?.sourceConnString?.trim() || null) : sourceConn()
     if (src && state.targetConn) {
       const { rows, embedding } = await verifyParity(src, state.targetConn, emit)
       for (const r of rows) {
@@ -644,9 +743,17 @@ async function runDemoMigration(source: string, emit: (e: SwarmEvent) => void): 
   const totalRows = state.copied.reduce((n, r) => n + r.copied, 0)
   const copyOk = state.copied.length > 0 && state.copied.every((r) => r.ok)
   const prBit = state.prUrl ? ` Cutover PR opened: ${state.prUrl}.` : ''
-  const summary = copyOk
-    ? `Real data live on a freshly-provisioned Aiven Postgres (${state.targetService}): ${totalRows} rows copied with verified row-count parity, pgvector embeddings included, realtime round-tripped over Aiven Kafka.${prBit} CTO agent on watch.`
-    : builtGraph?.summary ?? `Migrated ${source} onto Aiven (${state.targetService}).${prBit}`
+  // Honest summary tailored to which data source was actually used.
+  let summary: string
+  if (copyOk && state.dataSource === 'csv') {
+    summary = `Your app's data is live on a freshly-provisioned Aiven Postgres (${state.targetService}): ${totalRows} rows imported from CSV across ${state.copied.length} table(s) with verified row-count parity.${prBit} CTO agent on watch.`
+  } else if (copyOk && state.dataSource === 'source-db') {
+    summary = `Your source database is live on a freshly-provisioned Aiven Postgres (${state.targetService}): ${totalRows} rows copied with verified row-count parity, pgvector embeddings included.${prBit} CTO agent on watch.`
+  } else if (copyOk) {
+    summary = `Real data live on a freshly-provisioned Aiven Postgres (${state.targetService}): ${totalRows} rows copied with verified row-count parity, pgvector embeddings included, realtime round-tripped over Aiven Kafka.${prBit} CTO agent on watch.`
+  } else {
+    summary = builtGraph?.summary ?? `Migrated ${source} onto Aiven (${state.targetService}).${prBit}`
+  }
   emit({ type: 'done', readiness, summary })
 
   // Release live resources so a headless CLI run exits promptly instead of waiting on idle

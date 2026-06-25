@@ -78,6 +78,49 @@ export async function cloneRepo(url: string): Promise<{ dir: string; cleanup: ()
   return { dir, cleanup }
 }
 
+/** Extract an `owner/repo` slug from a GitHub URL or a bare slug. Throws on anything else. */
+function toSlug(repoUrlOrSlug: string): string {
+  const s = String(repoUrlOrSlug || '').trim()
+  const m = s.match(/github\.com[/:]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?\/?$/)
+  const slug = m ? m[1] : s
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(slug)) {
+    throw new Error(`invalid repo (expected owner/repo): ${s}`)
+  }
+  return slug
+}
+
+/**
+ * Clone a repo using the local `gh` CLI's auth — so PRIVATE repos work too (the demo's own
+ * live-hype-wall is private). Falls back to plain `git` over https if gh is unavailable. Accepts an
+ * https GitHub URL or an `owner/repo` slug. argv-only (no shell); returns the dir + a safe cleanup().
+ */
+export async function cloneRepoAuthed(repoUrlOrSlug: string): Promise<{ dir: string; cleanup: () => void }> {
+  const slug = toSlug(repoUrlOrSlug)
+  const dir = await mkdtemp(join(tmpdir(), 'overmind-clone-'))
+  const cleanup = (): void => {
+    rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+  try {
+    // `gh repo clone` uses the active gh auth (handles private). `--` passes git flags through.
+    await execFileP('gh', ['repo', 'clone', slug, dir, '--', '--depth', '1', '--no-tags'], {
+      timeoutMs: 90_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    })
+  } catch {
+    try {
+      await execFileP(
+        'git',
+        ['clone', '--depth', '1', '--no-tags', '--', `https://github.com/${slug}.git`, dir],
+        { timeoutMs: 90_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '/bin/echo' } },
+      )
+    } catch (e) {
+      cleanup()
+      throw new Error(`authed clone of ${slug} failed: ${(e as Error)?.message ?? e}`)
+    }
+  }
+  return { dir, cleanup }
+}
+
 /** Promise wrapper around execFile with a hard timeout and bounded buffer. */
 function execFileP(
   cmd: string,

@@ -112,12 +112,36 @@ app.get('/api/stream', (c) =>
 // Protected: callable by EITHER a logged-in human OR a valid agent bearer token. This is what an
 // agent does right after it self-registers — proving end-to-end agentic onboarding → action.
 app.post('/api/run', requireHumanOrAgent, async (c) => {
+  // Reject oversized payloads up front (Content-Length) so a runaway body can't exhaust memory.
+  // CSV imports can be large — we accept up to ~16MB of JSON.
+  const MAX_BODY_BYTES = 16 * 1024 * 1024
+  const declaredLen = Number(c.req.header('content-length') ?? 0)
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_BODY_BYTES) {
+    return c.json({ ok: false, error: 'request body too large (max ~16MB)' }, 413)
+  }
+
   let bodySource: string | undefined
   let bodyMode: RunMode | undefined
+  let sourceConnString: string | undefined
+  let csvSources: { tableName: string; csvText: string }[] | undefined
   try {
     const body = await c.req.json()
     if (body?.source && typeof body.source === 'string') bodySource = body.source.trim()
     if (body?.mode === 'demo' || body?.mode === 'analyze') bodyMode = body.mode
+
+    // Optional user-provided SOURCE Postgres connection string (own-Supabase → DB→DB copy). SECRET.
+    if (typeof body?.sourceConnString === 'string' && body.sourceConnString.trim()) {
+      sourceConnString = body.sourceConnString.trim()
+    }
+
+    // Optional CSV exports (Lovable → CSV import). Validate shapes defensively; the importer enforces
+    // the hard caps (<=8 files, <=2MB each, safe table names) — here we just coerce to a clean array.
+    if (Array.isArray(body?.csvSources)) {
+      const cleaned = body.csvSources
+        .filter((s: any) => s && typeof s.tableName === 'string' && typeof s.csvText === 'string')
+        .map((s: any) => ({ tableName: s.tableName.trim(), csvText: s.csvText }))
+      if (cleaned.length) csvSources = cleaned
+    }
   } catch {
     /* empty/invalid body → defaults below */
   }
@@ -130,14 +154,17 @@ app.post('/api/run', requireHumanOrAgent, async (c) => {
 
   const actor = c.get('actor')
   const who = actor.agent ? `agent:${actor.agent.clientId}` : `human:${actor.human?.email}`
-  broadcast({ type: 'log', level: 'info', msg: `run started by ${who} (mode=${mode})` })
+  // NEVER log sourceConnString (secret) or csvText (data) — only their presence/shape.
+  const srcKind = csvSources ? `csv:${csvSources.length}` : sourceConnString ? 'source-db' : 'seeded'
+  broadcast({ type: 'log', level: 'info', msg: `run started by ${who} (mode=${mode}, data=${srcKind})` })
 
   // Kick off async; respond immediately. Events flow over /api/stream.
-  void runMigration(source, broadcast, { mode }).catch((e) => {
+  void runMigration(source, broadcast, { mode, sourceConnString, csvSources }).catch((e) => {
     broadcast({ type: 'error', msg: `run failed: ${(e as Error)?.message ?? e}` })
   })
 
-  return c.json({ ok: true, source, mode, started: true, actor: who })
+  // Response never echoes secrets/data — only the resolved shape.
+  return c.json({ ok: true, source, mode, dataSource: srcKind, started: true, actor: who })
 })
 
 // ── Tenant infra snapshot (the CTO console's live left rail) ─────────────────────────

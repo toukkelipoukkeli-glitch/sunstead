@@ -399,6 +399,49 @@
 .pp-byo-row .pp-btn { flex-shrink: 0; }
 .pp-byo-note { margin: 12px 0 0; font-size: 13px; line-height: 1.55; color: var(--pp-dim); }
 
+/* ── source-data picker ── */
+.pp-data-picker {
+  margin-top: 28px;
+  background: var(--pp-cream);
+  border: 1px solid var(--pp-line);
+  border-radius: var(--pp-r);
+  padding: 16px 18px;
+}
+.pp-data-picker-head {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--pp-dim2); margin-bottom: 12px;
+}
+.pp-data-tabs {
+  display: inline-flex; gap: 4px; padding: 3px;
+  background: var(--pp-bg); border: 1px solid var(--pp-line2);
+  border-radius: var(--pp-r-sm);
+}
+@media (max-width: 520px) { .pp-data-tabs { display: flex; flex-wrap: wrap; } }
+.pp-data-tab {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--pp-dim);
+  padding: 6px 13px; border: 0; border-radius: 7px;
+  background: transparent; cursor: pointer; transition: color 0.12s, background 0.12s;
+}
+.pp-data-tab:hover { color: var(--pp-txt); }
+.pp-data-tab.on { color: #fff; background: var(--pp-red); }
+.pp-data-body { margin-top: 14px; }
+.pp-data-body .pp-source-input { margin: 0; }
+.pp-data-help { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--pp-dim); }
+
+.pp-csv-drop {
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px; text-align: center; cursor: pointer;
+  background: var(--pp-bg); border: 1.5px dashed var(--pp-line2);
+  border-radius: var(--pp-r-sm); transition: border-color 0.12s;
+}
+.pp-csv-drop:hover { border-color: var(--pp-red); }
+.pp-csv-drop input[type="file"] { display: none; }
+.pp-csv-drop-label { font-size: 13.5px; font-weight: 600; color: var(--pp-dim); }
+.pp-csv-summary {
+  margin-top: 10px; font-family: "Geist Mono", monospace; font-size: 12px;
+  color: var(--pp-txt); line-height: 1.5; word-break: break-word;
+}
+
 .pp-spin-dark { border-color: rgba(26,26,26,0.25); border-top-color: var(--pp-txt); }
 
 .pp-deploy-cta { margin-top: 26px; }

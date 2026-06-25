@@ -10,18 +10,60 @@
 import { useState } from 'react'
 import './product.css'
 import { Stepper } from './components/Stepper.tsx'
-import { startRun } from './api.ts'
+import { startRun, type CsvSource, type RunOptions } from './api.ts'
+
+// Which kind of *source data* the run should carry. Demo is the honest default.
+type DataSource = 'demo' | 'pg' | 'csv'
+
+// Derive a SQL-safe table name from a CSV filename: strip .csv, lowercase, non-alnum -> _.
+function tableNameFromFile(name: string): string {
+  return name
+    .replace(/\.csv$/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'table'
+}
+
+// Quick, cheap row estimate: non-empty lines minus the header. Good enough for a summary.
+function estimateRows(csvText: string): number {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0)
+  return Math.max(0, lines.length - 1)
+}
 
 export default function Deploy() {
   const [repo, setRepo] = useState('')
   const [busy, setBusy] = useState<null | 'demo' | 'analyze'>(null)
   const [err, setErr] = useState<string | null>(null)
 
+  // ── source-data picker state ──
+  const [dataSource, setDataSource] = useState<DataSource>('demo')
+  const [connString, setConnString] = useState('')
+  const [csvSources, setCsvSources] = useState<CsvSource[]>([])
+  const [csvRows, setCsvRows] = useState<Record<string, number>>({})
+
+  async function onCsvPick(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const staged: CsvSource[] = []
+    const rows: Record<string, number> = {}
+    for (const file of Array.from(files)) {
+      const csvText = await file.text()
+      const tableName = tableNameFromFile(file.name)
+      staged.push({ tableName, csvText })
+      rows[file.name] = estimateRows(csvText)
+    }
+    setCsvSources(staged)
+    setCsvRows(rows)
+  }
+
   async function go(source: string | undefined, mode: 'demo' | 'analyze') {
     if (busy) return
     setBusy(mode)
     setErr(null)
-    const { ok } = await startRun(source, mode)
+    // Layer the chosen source data onto the run. Demo carries nothing extra.
+    const opts: RunOptions = { source, mode }
+    if (dataSource === 'pg' && connString.trim()) opts.sourceConnString = connString.trim()
+    if (dataSource === 'csv' && csvSources.length > 0) opts.csvSources = csvSources
+    const { ok } = await startRun(opts)
     if (!ok) {
       setErr("Couldn't reach the migration engine. Check your connection and try again.")
       setBusy(null)
@@ -56,6 +98,95 @@ export default function Deploy() {
           One click hands the backend to an agent swarm. It moves the parts that need Aiven scale —
           data, realtime, vector search — and leaves the rest running on Lovable.
         </p>
+
+        {/* ── SOURCE DATA: pick what real data (if any) the run should carry ── */}
+        <section className="pp-data-picker">
+          <div className="pp-data-picker-head">Source data</div>
+          <div className="pp-data-tabs" role="tablist" aria-label="Source data">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={dataSource === 'demo'}
+              className={`pp-data-tab${dataSource === 'demo' ? ' on' : ''}`}
+              onClick={() => setDataSource('demo')}
+            >
+              Demo data
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={dataSource === 'pg'}
+              className={`pp-data-tab${dataSource === 'pg' ? ' on' : ''}`}
+              onClick={() => setDataSource('pg')}
+            >
+              Postgres / Supabase
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={dataSource === 'csv'}
+              className={`pp-data-tab${dataSource === 'csv' ? ' on' : ''}`}
+              onClick={() => setDataSource('csv')}
+            >
+              Table CSVs
+            </button>
+          </div>
+
+          {dataSource === 'demo' && (
+            <p className="pp-data-help">
+              Graduate with PulseWall's bundled sample data — nothing to configure.
+            </p>
+          )}
+
+          {dataSource === 'pg' && (
+            <div className="pp-data-body">
+              <div className="pp-source-input">
+                <span className="pp-leaf">
+                  <DbMark />
+                </span>
+                <input
+                  value={connString}
+                  onChange={(e) => setConnString(e.target.value)}
+                  placeholder="postgres://user:pass@host:5432/db"
+                  spellCheck={false}
+                  aria-label="Postgres or Supabase connection string"
+                />
+              </div>
+              <p className="pp-data-help">
+                Own-Supabase apps expose this in Settings -&gt; Database.
+              </p>
+            </div>
+          )}
+
+          {dataSource === 'csv' && (
+            <div className="pp-data-body">
+              <label className="pp-csv-drop">
+                <input
+                  type="file"
+                  accept=".csv"
+                  multiple
+                  onChange={(e) => onCsvPick(e.target.files)}
+                  aria-label="Table CSV exports"
+                />
+                <span className="pp-csv-drop-label">
+                  {csvSources.length > 0
+                    ? `${csvSources.length} file${csvSources.length === 1 ? '' : 's'} staged · click to replace`
+                    : 'Drop your table CSV exports'}
+                </span>
+              </label>
+              {csvSources.length > 0 && (
+                <div className="pp-csv-summary">
+                  {Object.entries(csvRows)
+                    .map(([file, rows]) => `${file} -> ${rows} rows`)
+                    .join(', ')}
+                </div>
+              )}
+              <p className="pp-data-help">
+                Works even for locked Lovable Cloud apps — export each table to CSV and drop them here.
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* ── PRIMARY: the bundled demo app ── */}
         <section className="pp-connect-primary">
@@ -166,6 +297,18 @@ function FolderMark() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.2H19.5A1.5 1.5 0 0121 8.7v9.3A1.5 1.5 0 0119.5 19.5h-15A1.5 1.5 0 013 18V6.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  )
+}
+function DbMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3"
         stroke="currentColor"
         strokeWidth="1.6"
       />

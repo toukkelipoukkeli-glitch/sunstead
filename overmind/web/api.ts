@@ -49,21 +49,49 @@ export function connectStream(onEvent: (e: SwarmEvent) => void): () => void {
   }
 }
 
+/** A staged CSV table export the user dropped in: a derived table name + raw CSV text. */
+export type CsvSource = { tableName: string; csvText: string }
+
+/** Options for {@link startRun}. Empty fields are omitted from the POST body. */
+export type RunOptions = {
+  source?: string
+  mode?: 'demo' | 'analyze'
+  /** Postgres / Supabase connection string for live source data. */
+  sourceConnString?: string
+  /** Table CSV exports staged in the Connect screen. */
+  csvSources?: CsvSource[]
+}
+
 /**
- * Kick off a migration run. POST /api/run { source?, mode? }.
- *  - `startRun()` / `startRun(undefined, 'demo')` → the real ~40s warm-path demo migration.
- *  - `startRun(<github url>, 'analyze')`           → real clone + analyze + generate.
+ * Kick off a migration run. POST /api/run { source?, mode?, sourceConnString?, csvSources? }.
+ *  - `startRun()` / `startRun({ mode: 'demo' })`            → the real ~40s warm-path demo migration.
+ *  - `startRun({ source: <github url>, mode: 'analyze' })`  → real clone + analyze + generate.
+ *  - `startRun({ sourceConnString })`                       → bring real data via a live source DB.
+ *  - `startRun({ csvSources })`                             → bring real data via table CSV exports.
+ *
+ * Backward-compatible: `startRun(source, mode)` (string first arg) still works — it's
+ * normalized to `{ source, mode }`, so existing call sites like `startRun(undefined, 'demo')`
+ * keep compiling and behaving identically.
+ *
  * The backend runs without login (mock mode), so this works from the public URL.
  * Degrades to { ok:false } if the API is down — callers show an inline error.
  */
 export async function startRun(
-  source?: string,
-  mode?: 'demo' | 'analyze',
+  optsOrSource?: RunOptions | string,
+  legacyMode?: 'demo' | 'analyze',
 ): Promise<{ ok: boolean }> {
+  // Normalize the legacy positional (source, mode) call into a RunOptions object.
+  const opts: RunOptions =
+    typeof optsOrSource === 'string' || optsOrSource === undefined
+      ? { source: optsOrSource, mode: legacyMode }
+      : optsOrSource
+
   try {
-    const body: { source?: string; mode?: 'demo' | 'analyze' } = {}
-    if (source) body.source = source
-    if (mode) body.mode = mode
+    const body: RunOptions = {}
+    if (opts.source) body.source = opts.source
+    if (opts.mode) body.mode = opts.mode
+    if (opts.sourceConnString) body.sourceConnString = opts.sourceConnString
+    if (opts.csvSources && opts.csvSources.length > 0) body.csvSources = opts.csvSources
     const res = await apiFetch('/api/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
