@@ -3,3 +3,7 @@ dist/
 *.tsbuildinfo
 navigate/
 .gitignore
+.env
+.env.*
+!.env.example
+.mcp.local.json
