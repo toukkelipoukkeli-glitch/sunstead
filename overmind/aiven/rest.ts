@@ -170,6 +170,13 @@ export async function provision(
   return r.service
 }
 
+/** Delete a service. Used to free node quota by removing our throwaway overmind-grad* targets. */
+export async function deleteService(project: string, name: string): Promise<void> {
+  await request(`/project/${encodeURIComponent(project)}/service/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+}
+
 /**
  * Connection info for a service. Returns flattened pg fields and, for kafka, a nested kafka object.
  * Pulls from service_uri_params + components, which is where Aiven exposes live creds.

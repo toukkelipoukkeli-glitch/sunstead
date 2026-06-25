@@ -206,6 +206,33 @@ async function resolveTargetService(
     emit({ type: 'log', level: 'info', msg: `provision: provisioning a FRESH target service ${service}` })
   }
 
+  // Free node quota first: delete any prior throwaway target(s) we created (overmind-grad*). Scoped
+  // STRICTLY to our own grad targets — never the source DB, Kafka, or any other service. Trial
+  // accounts cap Postgres nodes, so a fresh create only succeeds after the old target is released.
+  if (fresh && rest?.listServices && rest?.deleteService && hasAivenToken()) {
+    try {
+      const stale = (await rest.listServices(AIVEN_PROJECT)).filter(
+        (s: any) => s.service_type === 'pg' && /^overmind-grad/.test(s.service_name),
+      )
+      for (const s of stale) {
+        await rest.deleteService(AIVEN_PROJECT, s.service_name).catch(() => {})
+        emitReceipt(emit, 'aiven_service_delete', `Freed a node — deleted prior target ${s.service_name}`)
+      }
+      // Delete is async; wait for the node(s) to actually release before creating the fresh one.
+      if (stale.length) {
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 3000))
+          const left = (await rest.listServices(AIVEN_PROJECT)).filter((s: any) =>
+            /^overmind-grad/.test(s.service_name),
+          )
+          if (!left.length) break
+        }
+      }
+    } catch (e) {
+      emit({ type: 'log', level: 'warn', msg: `provision: target cleanup skipped (${(e as Error).message})` })
+    }
+  }
+
   // Autonomous agent beat — provision the fresh service + Kafka topic. Real MCP receipts.
   const mcp = await tryImport('../aiven/mcp.ts')
   if (fresh && mcp?.runAivenAgent && hasAnthropic() && hasAivenToken()) {
