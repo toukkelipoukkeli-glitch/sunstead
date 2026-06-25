@@ -31,8 +31,8 @@ export default function Landing() {
       </div>
 
       <header className="sales-nav">
-        <a className="sales-brand" href="#/" aria-label="Aiven Overmind home">
-          <strong>Aiven/Overmind</strong>
+        <a className="sales-brand" href="#/" aria-label="Overmind home">
+          <strong>Overmind</strong>
           <span>autonomous migration operator</span>
         </a>
         <nav aria-label="Sales navigation">
@@ -69,12 +69,12 @@ export default function Landing() {
           </div>
         </div>
 
-        <div className="sales-product-visual" aria-label="Aiven Overmind mission preview">
+        <div className="sales-product-visual" aria-label="Overmind mission preview">
           <div className="migration-preview">
             <div className="preview-topline">
               <span className="service-dot postgres-dot" />
               <div>
-                <small>Aiven Overmind</small>
+                <small>Overmind</small>
                 <strong>PulseWall graduation ready</strong>
               </div>
               <em>92/100</em>

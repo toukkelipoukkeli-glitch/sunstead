@@ -1,9 +1,9 @@
-# Aiven Overmind
+# Overmind
 
 > **Point Overmind at any Lovable/Supabase app → a swarm of agents graduates its heavy layer —
 > data, realtime, search — onto Aiven while you watch, then a CTO agent runs it for you.**
 
-Aiven Overmind is an autonomous agent swarm that **graduates a vibe-coded Lovable/Supabase app's
+Overmind is an autonomous agent swarm that **graduates a vibe-coded Lovable/Supabase app's
 backend onto Aiven**. It doesn't just copy tables. It recovers what the app *expected its backend to
 do* — auth, storage, realtime, data API, vector search — re-expresses each behavior on an
 Aiven-native primitive, moves your data with verified row-count parity, generates the replacement

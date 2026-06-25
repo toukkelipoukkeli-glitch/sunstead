@@ -1,4 +1,4 @@
-# Aiven Overmind — the moonshot
+# Overmind — the moonshot
 
 > The long shot. Henri's `Aiden` is the honest one-click data-plane migrator (migrate data +
 > rewrite one realtime path + **flag** auth/storage). **Overmind goes the other way: it doesn't

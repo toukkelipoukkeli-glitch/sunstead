@@ -1,4 +1,4 @@
-# Aiven Overmind — 4-minute demo script
+# Overmind — 4-minute demo script
 
 > One operator at the keyboard, one narrator (can be the same person). Mission Control is full-screen
 > on the projector. The migration is **pre-warmed** (Aiven services already provisioned on

@@ -10,10 +10,7 @@ export function Footer() {
           <span className="lp-logo-mark" aria-hidden="true">
             <Logo size={22} />
           </span>
-          <span className="lp-logo-text">
-            Aiven<span className="lp-logo-divider">/</span>
-            <span className="lp-logo-product">Overmind</span>
-          </span>
+          <span className="lp-logo-text">Overmind</span>
         </a>
         <p className="lp-footer-tag">
           Graduate your Lovable app to Aiven — by a swarm of agents that builds, heals and operates

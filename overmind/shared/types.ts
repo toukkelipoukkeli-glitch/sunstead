@@ -1,4 +1,4 @@
-// Aiven Overmind — the shared contract. Every package + the control-room UI import from here.
+// Overmind — the shared contract. Every package + the control-room UI import from here.
 // This is the source of truth that lets the swarm's parts cohere.
 
 // ───────────────────────── Behavior graph ─────────────────────────

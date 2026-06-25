@@ -4,7 +4,7 @@ Date: 2026-06-25
 
 ## Current Product
 
-**Aiven Overmind** is the final-demo product path.
+**Overmind** is the final-demo product path.
 
 It takes a Lovable/Supabase-style app, builds a behavior graph, graduates the heavy data/realtime/search layer onto Aiven, streams the agent work in Mission Control, and hands off to an always-on CTO console.
 

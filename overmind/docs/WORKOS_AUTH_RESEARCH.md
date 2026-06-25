@@ -1,4 +1,4 @@
-# WorkOS Auth for Aiven Overmind — Feasibility Research
+# WorkOS Auth for Overmind — Feasibility Research
 
 **Question:** Can we use WorkOS as Overmind's auth layer *specifically so AI agents — not just humans — can sign up for and authenticate programmatically* (M2M / autonomous onboarding, no browser)?
 

@@ -286,7 +286,7 @@ startMonitor(broadcast)
 
 authBanner()
 serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
-  console.log(`⚡ Aiven Overmind — control plane on http://0.0.0.0:${info.port}`)
+  console.log(`⚡ Overmind — control plane on http://0.0.0.0:${info.port}`)
   console.log(`   GET  /api/health   GET /api/stream (SSE)   POST /api/run {source?}`)
   console.log(`   auth: GET /api/auth/login|callback|me|logout   POST /api/agents/register`)
   console.log(`   cto:  GET /api/tenant/:id   GET /api/cto/state   POST /api/cto/chat (SSE)`)

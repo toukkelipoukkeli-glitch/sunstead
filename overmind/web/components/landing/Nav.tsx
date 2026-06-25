@@ -1,5 +1,4 @@
-// Aiven-style top nav. The wordmark reads "Aiven" (the platform) with the product
-// name "Overmind" beside it — so the page reads as a native Aiven product page.
+// Aiven-style top nav. The product wordmark stays singular: Overmind.
 // "Sign in" / "Start free" point at the WorkOS auth routes the auth agent builds;
 // if those 404 in dev they degrade to the console (handled in authHref()).
 
@@ -21,10 +20,7 @@ export function Nav() {
           <span className="lp-logo-mark" aria-hidden="true">
             <Logo size={24} />
           </span>
-          <span className="lp-logo-text">
-            Aiven<span className="lp-logo-divider">/</span>
-            <span className="lp-logo-product">Overmind</span>
-          </span>
+          <span className="lp-logo-text">Overmind</span>
         </a>
 
         <nav className="lp-nav-links">
