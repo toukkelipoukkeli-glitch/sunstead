@@ -44,21 +44,26 @@ Read these in order before code:
 1. [CRITICAL_PATH.md](CRITICAL_PATH.md) — canonical entrypoint, implementation order, bottlenecks, and acceptance gates.
 2. [LOCKED_DECISIONS.md](LOCKED_DECISIONS.md) — final choices; if docs conflict, this wins.
 3. [DEMO_FLOW.md](../DEMO_FLOW.md) — what judges see.
-4. [RUNTIME_CONTRACTS.md](RUNTIME_CONTRACTS.md) — state machine, events, data models, env vars, and provider boundaries.
-5. [MCP_AND_AIVEN_CONTRACT.md](MCP_AND_AIVEN_CONTRACT.md) — exact Aiven proof actions and fallback rules.
-6. [VERIFICATION_RUNBOOK.md](VERIFICATION_RUNBOOK.md) — demo preflight, test gates, fallbacks, and stage runbook.
-7. [SPEC_STACK.md](SPEC_STACK.md) — map of which specs exist and what each owns.
+4. [UI_DECISION_PACKAGE.md](UI_DECISION_PACKAGE.md) — stage-facing control-room design, proof hierarchy, and UI acceptance gates.
+5. [UI_IMPLEMENTATION_SPEC.md](UI_IMPLEMENTATION_SPEC.md) — concrete UI routes, components, visual tokens, copy replacements, and build order.
+6. [RUNTIME_CONTRACTS.md](RUNTIME_CONTRACTS.md) — state machine, events, data models, env vars, and provider boundaries.
+7. [MCP_AND_AIVEN_CONTRACT.md](MCP_AND_AIVEN_CONTRACT.md) — exact Aiven proof actions and fallback rules.
+8. [VERIFICATION_RUNBOOK.md](VERIFICATION_RUNBOOK.md) — demo preflight, test gates, fallbacks, and stage runbook.
+9. [live-aiven-verification-gate/README.md](live-aiven-verification-gate/README.md) — focused M05.5 spec for proving M01/M03/M05 against live Aiven.
+10. [END_TO_END_DEMO_SETUP_CHECKLIST.md](END_TO_END_DEMO_SETUP_CHECKLIST.md) — setup checklist for local, Aiven, fixture, fallback, and rehearsal prep.
+11. [SPEC_STACK.md](SPEC_STACK.md) — map of which specs exist and what each owns.
 
 ## Mission Table
 
 | # | Mission | Status | T | A | Notes |
 | --- | --- | --- | ---: | ---: | --- |
-| 00 | Fixture-backed demo shell | DEFINED | 14 | 95 | Full `Graduate To Aiven` story visible immediately, driven by `RunEvent[]` fixtures |
-| 01 | Aiven proof spine | DEFINED | 15 | 90 | Replace fixture receipts with MCP receipts, Postgres writes/reads, Kafka topic/message roundtrip |
-| 02 | PulseWall scanner + behavior graph | DEFINED | 12 | 75 | Replace fixture behavior map with deterministic scanner over real files and migrations |
-| 03 | Aiven Postgres data migration | DEFINED | 18 | 85 | Replace fixture row counts with tables, sample rows, validation counts, receipts |
+| 00 | Fixture-backed demo shell | BUILT | 14 | 95 | Full `Graduate To Aiven` story visible immediately, driven by `RunEvent[]` fixtures |
+| 01 | Aiven proof spine | BUILT / LIVE CREDS PENDING | 15 | 90 | Replace fixture receipts with MCP receipts, Postgres writes/reads, Kafka topic/message roundtrip |
+| 02 | PulseWall scanner + behavior graph | BUILT | 12 | 75 | Replace fixture behavior map with deterministic scanner over real files and migrations |
+| 03 | Aiven Postgres data migration | BUILT / LIVE CREDS PENDING | 18 | 85 | Replace fixture row counts with tables, sample rows, validation counts, receipts |
 | 04 | Kafka agent bus proof | DEFINED | 16 | 90 | Replace fixture bus with real Aiven Kafka `migration.events` produce/list |
-| 05 | Provider cutover + Postgres events | DEFINED | 24 | 95 | Replace fixture cutover with scoped runtime reads/events from local adapter -> Aiven PG |
+| 05 | Provider cutover + Postgres events | BUILT / LIVE CREDS PENDING | 24 | 95 | Replace fixture cutover with scoped runtime reads/events from local adapter -> Aiven PG |
+| 05.5 | Live Aiven verification gate | DEFINED | 10 | 95 | One repeatable command proves M01/M03/M05 live before Kafka/UI polish |
 | 06 | Control room UI hardening + final report | DEFINED | 12 | 80 | Polish already-visible shell, proof package, cost/CTO card |
 | 07 | Rehearsal hardening | DEFINED | 12 | 95 | Preflight, fallback, recorded backup, timing |
 
@@ -79,7 +84,7 @@ Mission 04 may run in parallel if someone else owns it. With one implementer, do
 
 ## To Continue
 
-Start with [CRITICAL_PATH.md](CRITICAL_PATH.md), Mission 00.
+Start with [CRITICAL_PATH.md](CRITICAL_PATH.md), then run the focused [M05.5 live Aiven verification gate](live-aiven-verification-gate/README.md), then Mission 04/06.
 
 Mission 00 is allowed to be nearly hardcoded, but it must use the final runtime contracts:
 
@@ -99,4 +104,4 @@ After Mission 00, replace fixture blocks in this order:
 - Local adapter can deliver one Aiven Postgres `app_events` event to the browser.
 - Aiven Kafka produce/list roundtrip appears in the agent-bus panel.
 
-Do not start broad visual polish until the replacement order above has begun. The shell can look good enough for rehearsal; the hard work is making each proof card truthful.
+Do not start broad decorative expansion until the replacement order above has begun. Mission 00 still must follow [UI_DECISION_PACKAGE.md](UI_DECISION_PACKAGE.md): the shell should feel stage-ready from the first fixture build, and the hard work is making each proof card both legible and truthful.

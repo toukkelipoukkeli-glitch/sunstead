@@ -9,9 +9,10 @@ The canonical implementation roadmap is:
 1. [plans/CRITICAL_PATH.md](plans/CRITICAL_PATH.md)
 2. [plans/LOCKED_DECISIONS.md](plans/LOCKED_DECISIONS.md)
 3. [DEMO_FLOW.md](DEMO_FLOW.md)
-4. [plans/RUNTIME_CONTRACTS.md](plans/RUNTIME_CONTRACTS.md)
-5. [plans/MCP_AND_AIVEN_CONTRACT.md](plans/MCP_AND_AIVEN_CONTRACT.md)
-6. [plans/VERIFICATION_RUNBOOK.md](plans/VERIFICATION_RUNBOOK.md)
+4. [plans/UI_DECISION_PACKAGE.md](plans/UI_DECISION_PACKAGE.md)
+5. [plans/RUNTIME_CONTRACTS.md](plans/RUNTIME_CONTRACTS.md)
+6. [plans/MCP_AND_AIVEN_CONTRACT.md](plans/MCP_AND_AIVEN_CONTRACT.md)
+7. [plans/VERIFICATION_RUNBOOK.md](plans/VERIFICATION_RUNBOOK.md)
 
 If docs conflict, follow [plans/CRITICAL_PATH.md](plans/CRITICAL_PATH.md) for mission order and [plans/LOCKED_DECISIONS.md](plans/LOCKED_DECISIONS.md) for final product choices.
 

@@ -279,7 +279,7 @@ Then show a real Postgres event insert and browser delivery, plus a Kafka agent-
   "source_behavior": "supabase_realtime",
   "demo_target": "aiven_postgres.app_events",
   "production_event_bus_proof": "aiven_kafka.migration.events",
-  "browser_bridge": "sse",
+  "browser_bridge": "polling",
   "status": "shadow_validated"
 }
 ```
@@ -289,7 +289,7 @@ Receipt timeline:
 ```text
 aiven_pg_write app_events                         ok
 aiven_pg_read app_events_recent                   ok
-adapter.sse_bridge.delivery                      ok
+adapter.polling_bridge.delivery                  ok
 aiven_kafka_topic_create migration.events         ok
 aiven_kafka_topic_message_produce                 ok
 aiven_kafka_topic_message_list                    ok

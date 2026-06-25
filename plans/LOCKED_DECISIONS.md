@@ -94,13 +94,16 @@ Decision:
 
 - Keep Kafka.
 - Use one required topic: `migration.events`.
-- Kafka is the visible multi-agent bus and production event-bus proof.
-- Required live Kafka proof: create/verify topic, produce one workflow event, list/read it in the UI.
+- Kafka is an Aiven-side agent bus and production event-bus proof, not a detected source-app dependency.
+- The migration must still work when the Lovable/Supabase app has no Kafka usage.
+- Kafka project testing and implementation come after the scaffold, Aiven Postgres migration, and browser-critical Postgres `app_events` cutover path.
+- Required live Kafka proof when Kafka work begins: create/verify topic, produce one workflow event, list/read it in the UI.
 - Do not build `app.outbox.posts` unless everything else is already working.
 
 Why:
 
 - Aiven Kafka increases sponsor depth.
+- Lovable/Supabase apps normally use Supabase Realtime, not Kafka.
 - Keeping it out of the browser path reduces demo risk.
 
 ## D07: Aiven Apps
@@ -220,5 +223,21 @@ Mission numbers are stable labels, not a reason to delay the browser-critical pa
 Why:
 
 - The story becomes visible immediately.
-- Browser-critical functionality is de-risked before polish.
+- Browser-critical functionality is de-risked before cosmetic expansion.
 - Kafka stays sponsor-visible but not demo-fragile.
+
+## D15: UI Quality Is Part Of The Proof
+
+Decision:
+
+- The control room UI is a required demo surface, not optional polish.
+- Mission 00 must produce a credible stage-ready shell with the cold-open outcome screen, visible proof slots, clear state hierarchy, and readable final report.
+- Mission 06 hardens that same shell; it does not rescue a debug-only interface.
+- Keep the UI focused and dense, but do not downgrade it into raw logs or internal tooling.
+- If time gets tight, cut optional technical breadth before cutting the main visual story.
+
+Why:
+
+- Judges need to understand the autonomous migration in seconds.
+- A polished control room makes MCP receipts, Postgres validation, Kafka agent-bus events, and scoped cutover feel like one product.
+- The UI is how the behavior migration claim becomes visible.

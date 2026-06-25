@@ -10,8 +10,27 @@ as the entrypoint.
 
 Current next action:
 
-> Build Mission 00, the fixture-backed demo shell, using the final runtime contracts so every
-> fixture slot can later be replaced by live Aiven/Supabase proof without changing the demo flow.
+> Execute [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md):
+> configure Aiven credentials and verify Missions 01, 03, and 05 live. After that, finish the
+> Kafka agent-bus panel and UI/rehearsal hardening.
+
+## Endgoal Vision: Win
+
+The goal is to win the Aiven challenge by making judges feel, within the first 30 seconds, that
+they are watching the future control plane Aiven should own. Aiden should look calm, expensive,
+legible, and inevitable: one button turns a Lovable/Supabase prototype into an Aiven-backed
+runtime with visible receipts, validation, and an executive-ready migration report.
+
+The UI is the primary product proof. How the control room looks, moves, reads, and makes judges
+feel is more important than invisible implementation depth. Function is secondary when it does
+not change what judges can understand, trust, or remember on stage. Prefer one beautiful,
+credible, emotionally clear migration path over broader functionality that looks like a debug
+tool.
+
+This is not permission to fake the sponsor proof. Fixture, cached, fallback, and live states must
+stay honestly labeled. But every technical task must earn its place on screen: if a feature does
+not strengthen the `Graduate To Aiven` moment, the Aiven proof, the final report, or the judge's
+confidence, cut it.
 
 ## Required Reading
 
@@ -20,13 +39,16 @@ Before starting implementation, read these in order. This file owns the mission 
 1. [`../AIDEN_INFO.txt`](../AIDEN_INFO.txt) — sponsor challenge, rubric, and required Aiven/MCP framing.
 2. [`../STATUS.md`](../STATUS.md) — locked decisions, current assets, blockers, and judge framing.
 3. [`../DEMO_FLOW.md`](../DEMO_FLOW.md) — canonical live-demo script and what judges should see.
-4. [`SPEC_STACK.md`](SPEC_STACK.md) — how the planning docs fit together.
-5. [`LOCKED_DECISIONS.md`](LOCKED_DECISIONS.md) — final choices; if another doc leaves an option open, this wins.
-6. [`RUNTIME_CONTRACTS.md`](RUNTIME_CONTRACTS.md) — state machine, API routes, event payloads, tables, env vars, and provider boundaries.
-7. [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) — exact Aiven proof actions, receipts, Kafka topic contract, and fallback rules.
-8. [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) — preflight gates, rehearsal path, failure fallbacks, and stage runbook.
+4. [`UI_DECISION_PACKAGE.md`](UI_DECISION_PACKAGE.md) — control-room visual direction, screen architecture, proof hierarchy, and UI acceptance gates.
+5. [`UI_IMPLEMENTATION_SPEC.md`](UI_IMPLEMENTATION_SPEC.md) — concrete frontend routes, components, visual tokens, copy replacements, and UI build order.
+6. [`SPEC_STACK.md`](SPEC_STACK.md) — how the planning docs fit together.
+7. [`LOCKED_DECISIONS.md`](LOCKED_DECISIONS.md) — final choices; if another doc leaves an option open, this wins.
+8. [`RUNTIME_CONTRACTS.md`](RUNTIME_CONTRACTS.md) — state machine, API routes, event payloads, tables, env vars, and provider boundaries.
+9. [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) — exact Aiven proof actions, receipts, Kafka topic contract, and fallback rules.
+10. [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) — preflight gates, rehearsal path, failure fallbacks, and stage runbook.
+11. [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md) — focused M05.5 spec for proving M01, M03, and M05 against live Aiven before more polish.
 
-Do not start broad UI polish or agent-framework work until the reader can explain the demo-safe runtime path:
+Do not start broad visual expansion or agent-framework work until the reader can explain the demo-safe runtime path:
 
 ```text
 Browser -> local Aiden adapter -> Aiven Postgres + app_events
@@ -44,7 +66,11 @@ Canonical implementation specs:
 | [`RUNTIME_CONTRACTS.md`](RUNTIME_CONTRACTS.md) | Runtime interfaces, data models, events, tables, and env boundaries |
 | [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) | Sponsor-visible Aiven MCP actions, receipt shape, Postgres checks, Kafka proof |
 | [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) | Demo preflight, validation gates, fallback modes, and rehearsal timing |
+| [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md) | M05.5 live Aiven verification gate, script contract, pass/fail assertions, and fallback policy |
 | [`SPEC_STACK.md`](SPEC_STACK.md) | Which specs exist and when they are ready for code |
+| [`SCAFFOLD_STUB_PLAN.md`](SCAFFOLD_STUB_PLAN.md) | Top-down skeleton plan for contracts, stubs, fixture flow, UI panels, and replacement order |
+| [`UI_DECISION_PACKAGE.md`](UI_DECISION_PACKAGE.md) | Control-room visual direction, screen architecture, component hierarchy, proof labels, and UI quality gates |
+| [`UI_IMPLEMENTATION_SPEC.md`](UI_IMPLEMENTATION_SPEC.md) | Concrete sales/control route plan, component changes, CSS tokens, copy replacements, and UI implementation sequence |
 
 Product and demo references:
 
@@ -83,7 +109,10 @@ Conflict rule:
 - Demo sequence conflicts: [`../DEMO_FLOW.md`](../DEMO_FLOW.md) wins.
 - Runtime/API/table conflicts: [`RUNTIME_CONTRACTS.md`](RUNTIME_CONTRACTS.md) wins.
 - Aiven/MCP/Kafka proof conflicts: [`MCP_AND_AIVEN_CONTRACT.md`](MCP_AND_AIVEN_CONTRACT.md) wins.
+- UI/layout/visual hierarchy conflicts: [`UI_DECISION_PACKAGE.md`](UI_DECISION_PACKAGE.md) wins unless it conflicts with the demo flow, locked decisions, or runtime contracts.
+- UI implementation-detail conflicts: [`UI_IMPLEMENTATION_SPEC.md`](UI_IMPLEMENTATION_SPEC.md) wins unless it conflicts with `UI_DECISION_PACKAGE.md`, demo flow, locked decisions, or runtime contracts.
 - Build order conflicts: this file wins.
+- Scaffold conflicts: [`SCAFFOLD_STUB_PLAN.md`](SCAFFOLD_STUB_PLAN.md) is subordinate to locked decisions, runtime contracts, and this critical path.
 - Raw migration reference conflicts: current specs win over [`../migration-info/`](../migration-info/).
 - Historical idea conflicts: current specs win.
 
@@ -106,22 +135,31 @@ Forward knowns:
 
 ## Build Principle
 
-Build the demo shell first, but make it contract-driven, not disposable:
+Build the demo shell first, but make it contract-driven and demo-quality, not disposable:
 
 ```text
 fixture demo shell -> MCP/Postgres proof spine -> scanner -> Aiven Postgres data + app_events -> scoped cutover/browser polling -> Kafka agent-bus proof -> UI hardening
 ```
 
-The first implementation should make the entire `Graduate To Aiven` story visible with fixture events. Every fixture must use the same `RunEvent`, receipt, validation, Kafka-event, and report contracts that live code will later emit.
+The first implementation should make the entire `Graduate To Aiven` story visible with fixture events, including the cold-open outcome screen from `DEMO_FLOW.md`. Every fixture must use the same `RunEvent`, receipt, validation, Kafka-event, and report contracts that live code will later emit.
 
-Do not start broad visual polish until live proof replacement has begun. The shell exists to lock timing, presenter flow, and UI proof slots; it is not permission to avoid the real Aiven work.
+UI is part of the product proof, not decoration. Mission 00 needs a polished control room with clear hierarchy, credible status cards, crisp motion, and a readable final report from the start. Later missions replace fixture data with live proof; they should not require a UI redesign.
+
+The priority order is:
+
+1. judge-visible clarity, emotion, and stage confidence;
+2. sponsor-visible Aiven proof;
+3. enough live function to make the proof credible;
+4. everything else.
+
+Do not start broad cosmetic expansion until live proof replacement has begun. Keep the UI focused and high-quality, but avoid adding screens that do not serve the locked demo flow. If implementation depth and demo impact conflict, protect the visible judge experience first, as long as the proof labels remain honest.
 
 ## Recommended Implementation Order
 
 For one implementer, build in this order:
 
 ```text
-00 -> 01 -> 02 -> 03 -> 05 -> 04 -> 06 -> 07
+00 -> 01 -> 02 -> 03 -> 05 -> 05.5 -> 04 -> 06 -> 07
 ```
 
 Meaning:
@@ -131,9 +169,10 @@ Meaning:
 3. PulseWall scanner + behavior graph;
 4. Aiven Postgres data migration and `app_events`;
 5. provider cutover + browser polling proof;
-6. Kafka agent bus proof;
-7. control room UI hardening + final report;
-8. rehearsal hardening.
+6. live Aiven verification gate for Missions 01, 03, and 05;
+7. Kafka agent bus proof;
+8. control room UI hardening + final report;
+9. rehearsal hardening.
 
 For two implementers, Mission 04 can run in parallel after Mission 01. It must not delay Mission 05.
 
@@ -144,6 +183,7 @@ For two implementers, Mission 04 can run in parallel after Mission 01. It must n
   -> 01 Aiven proof spine
   -> 03 Aiven Postgres data migration
   -> 05 Provider cutover + Postgres events
+       -> 05.5 Live Aiven verification gate
        -> 06 Control room UI hardening + final report
             -> 07 Rehearsal hardening
 
@@ -157,6 +197,9 @@ For two implementers, Mission 04 can run in parallel after Mission 01. It must n
 ```
 
 Mission 02 and Mission 04 can run in parallel with the Postgres path, but not at the cost of delaying Mission 05. If there is only one implementer, do Mission 04 after Mission 05. Mission 00 should be completed first so all later work has visible slots to replace.
+
+Mission 05.5 is the live verification gate for Missions 01, 03, and 05. It should run before
+Kafka/UI polish unless another implementer can safely continue Mission 04 in parallel.
 
 ## Mission 00: Fixture-Backed Demo Shell
 
@@ -174,6 +217,7 @@ Make the full demo flow visible immediately, almost hardcoded, using fixture eve
 Build:
 
 - local control-room page;
+- cold-open completed outcome screen;
 - one primary `Graduate To Aiven` button;
 - fixture `RunEvent[]` stream with realistic timing;
 - source app card;
@@ -188,16 +232,19 @@ Build:
 
 Acceptance:
 
+- cold-open outcome state is present and can be shown before rewinding to the run;
+- first screen makes the product feel real, premium, and sponsor-native before any code detail is explained;
 - presenter can run the full story in under four minutes without live infra;
 - every visible card is fed by the same contract that live code will use later;
 - every fixture/live/cached proof has a status field or debug marker;
+- UI has a clear demo-ready visual hierarchy; no overlapping text, cramped controls, or placeholder-looking proof cards;
 - no real secret is required for Mission 00;
 - hidden/manual step controls exist so the presenter can pause the story.
 
 Kill/fallback:
 
 - If embedding PulseWall is slow, use a source-app card or screenshot-like fixture panel.
-- If styling slows work, keep layout simple and dense; proof slots matter more than polish.
+- If styling slows work, keep layout simple and dense, but keep the quality floor high enough for judging; do not downgrade the UI into a debug dashboard.
 - If the event stream state model is unclear, simplify to one append-only `RunEvent[]` array and derive UI state from it.
 
 ## Mission 01: Aiven Proof Spine
@@ -211,7 +258,7 @@ Depends on: Aiven credentials and target project
 
 Target:
 
-Replace the fixture Aiven receipt/Kafka proof blocks with sponsor-visible live Aiven actions.
+Replace the fixture Aiven receipt blocks with a small sponsor-visible live Aiven proof spine. Kafka here is only a smoke proof; Mission 04 owns the full visible Kafka agent-bus panel.
 
 Build:
 
@@ -227,7 +274,7 @@ Acceptance:
 
 - terminal or local API returns project/service status;
 - Aiven Postgres contains a receipt row for the run;
-- Kafka message roundtrip succeeds;
+- one Kafka smoke message roundtrip succeeds;
 - Mission 00 UI shows these as live events instead of fixture events;
 - failure messages are explicit and demo-safe.
 
@@ -316,7 +363,7 @@ Depends on: Mission 01
 
 Target:
 
-Replace fixture Kafka agent-bus events with real Aiven Kafka `migration.events` produce/list output.
+Replace the fixture Kafka agent-bus panel with real Aiven Kafka `migration.events` produce/list output for the workflow timeline.
 
 Build:
 
@@ -351,6 +398,8 @@ Target:
 
 Replace fixture cutover proof with a scoped demo runtime using the local Aiden adapter, Aiven Postgres data, and Aiven Postgres `app_events` for browser realtime.
 
+This is the protected technical mission. If time gets tight, cut optional SSE, live pricing, extra report copy, and nonessential scanner breadth before weakening this proof.
+
 Build:
 
 - define `supabaseProvider` and `aivenProvider`;
@@ -375,6 +424,50 @@ Kill/fallback:
 - Do not build SSE until polling works; if polling is unstable, show `/api/events/recent` result in a browser panel.
 - Do not put Postgres credentials in Vite client variables.
 
+## Mission 05.5: Live Aiven Verification Gate
+
+Status: DEFINED  
+Gap T: 10  
+Mission T: 10 — would rise if Aiven network access, credentials, or service permissions are unstable  
+A: 95  
+Cone: narrow-deep  
+Depends on: Missions 01, 03, and 05 scaffold paths
+
+Target:
+
+Prove the cached/scaffold Aiven path against real Aiven infrastructure before adding more UI or
+Kafka surface area.
+
+Detailed spec:
+
+- [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md)
+
+Build:
+
+- add one repeatable `npm run verify:live` script;
+- create a fresh run through the local API;
+- run source scan, proof spine, data migration, and provider cutover;
+- assert that Aiven Postgres migration and scoped runtime cutover are live, not cached;
+- verify `/api/posts`, `/api/leaderboard`, `/api/reactions`, and `/api/events/recent` after cutover;
+- treat Kafka as a warning unless Kafka env is configured or a future `--require-kafka` flag is used;
+- print a short pass/fail summary without secrets.
+
+Acceptance:
+
+- missing `AIVEN_POSTGRES_URL` fails fast with no secret leakage;
+- live Aiven Postgres data migration passes row counts for `posts`, `reactions`, `demo_users`, and `app_events`;
+- provider cutover switches `/api/adapter/status` to `live`;
+- reaction write creates an `app_events` row visible through `/api/events/recent`;
+- final report marks scoped demo cutover as passed;
+- Kafka is reported as live when configured and as a warning when missing;
+- implementation tracker records the first real result.
+
+Kill/fallback:
+
+- If Aiven Postgres cannot pass, do not claim live cutover; use fixture mode with honest presenter copy.
+- If Kafka cannot pass, keep it cached/same-day and continue with the browser-critical Aiven Postgres path.
+- If the full source app display is unstable, prove the scoped runtime through the control-room panel and adapter endpoints.
+
 ## Mission 06: Control Room UI Hardening + Final Report
 
 Status: DEFINED  
@@ -387,6 +480,8 @@ Depends on: Missions 01-05 enough to replay events
 Target:
 
 Harden the already-built Mission 00 shell for judges after live proof replacement is underway.
+
+This mission is required. It is not a downgrade target. Mission 06 turns the working proof into a stage-ready product surface while preserving the Mission 00 contracts.
 
 Build:
 
@@ -406,13 +501,14 @@ Acceptance:
 - `Graduate To Aiven` visibly drives the run;
 - every major state has a clear UI proof;
 - final report matches `DEMO_FLOW.md`;
-- presenter can pause/resume or use manual step controls.
+- judge-facing screens feel like a finished migration product, not an internal observability dashboard;
+- presenter can pause/resume or use manual step controls;
 - fixture-backed mode and live mode both use the same visible flow.
 
 Kill/fallback:
 
 - If live state streaming is unstable, use replayable run events from a JSON fixture after at least one live proof action.
-- Do not let UI polish delay Mission 05.
+- Do not let cosmetic expansion delay Mission 05, but keep the UI quality bar intact throughout the build.
 
 ## Mission 07: Rehearsal Hardening
 

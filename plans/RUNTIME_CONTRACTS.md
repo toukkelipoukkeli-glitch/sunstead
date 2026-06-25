@@ -117,12 +117,17 @@ Local Aiden API:
 | `GET` | `/api/runs/:runId` | Current run state |
 | `GET` | `/api/runs/:runId/events` | SSE stream for control room |
 | `GET` | `/api/runs/:runId/report` | Final proof package |
+| `POST` | `/api/runs/:runId/proof-spine` | Run the Aiven project/Postgres/Kafka proof spine and replace proof events |
+| `POST` | `/api/runs/:runId/source-scan` | Scan PulseWall source/migrations and replace the behavior graph |
+| `POST` | `/api/runs/:runId/data-migration` | Create/load/validate the scoped PulseWall dataset in Aiven Postgres |
+| `POST` | `/api/runs/:runId/provider-cutover` | Smoke test and switch the scoped adapter to Aiven Postgres when configured |
 | `POST` | `/api/runs/:runId/step/:stepName` | Hidden/manual presenter control |
 
 Generated local adapter:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/api/adapter/status` | Current local adapter mode: fixture or live Aiven provider |
 | `GET` | `/api/posts` | Read migrated posts from Aiven Postgres |
 | `GET` | `/api/leaderboard` | Read migrated leaderboard from Aiven Postgres |
 | `POST` | `/api/reactions` | Write demo reaction and insert Aiven Postgres `app_events` row |
@@ -244,9 +249,13 @@ type PulseWallProvider = {
   listPosts(): Promise<Post[]>
   getLeaderboard(): Promise<LeaderboardRow[]>
   addReaction(input: AddReactionInput): Promise<void>
-  subscribeEvents(onEvent: (event: PulseWallEvent) => void): () => void
+  listRecentEvents(input: { sinceId?: string; limit?: number }): Promise<PulseWallEvent[]>
 }
 ```
+
+Browser-critical realtime is implemented as a polling loop over `listRecentEvents`, backed by
+`GET /api/events/recent` and Aiven Postgres `app_events`. Do not require provider-level
+subscription semantics for the hackathon path.
 
 Implementations:
 

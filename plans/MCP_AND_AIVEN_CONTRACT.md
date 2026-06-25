@@ -10,6 +10,45 @@ MCP is the control plane and proof layer. It is not the bulk data pipe.
 
 Mission 00 may render fixture Aiven receipts to lock the demo flow. Final rehearsal and judging must include at least the required live proof actions below, or clearly label cached/fallback proof.
 
+## MCP Server Configuration
+
+Use the hosted Aiven MCP server from the project-scoped Codex config:
+
+```toml
+[mcp_servers.aiven]
+url = "https://mcp.aiven.live/mcp?allow_secrets=true"
+enabled = true
+default_tools_approval_mode = "prompt"
+startup_timeout_sec = 20
+tool_timeout_sec = 90
+```
+
+Codex reads this from:
+
+```text
+.codex/config.toml
+```
+
+Keep the raw MCP server descriptor at the repo root too, for tools that expect JSON MCP config:
+
+```json
+{
+  "mcpServers": {
+    "aiven": {
+      "url": "https://mcp.aiven.live/mcp?allow_secrets=true"
+    }
+  }
+}
+```
+
+This is the primary control-plane path for live Aiven proof actions.
+
+Security rule:
+
+- `allow_secrets=true` may let the local operator retrieve connection material for the demo.
+- Secrets still must never be committed, printed into docs, exposed through Vite/browser env, shown in screenshots, or dumped in terminal output.
+- Any script or receipt writer that handles MCP results must redact connection strings, tokens, usernames, and passwords before logging.
+
 ## Required Live Proof Actions
 
 At least these must be real during the final demo or rehearsal:
