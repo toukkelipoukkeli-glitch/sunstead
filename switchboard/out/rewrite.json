@@ -1,0 +1,165 @@
+{
+  "outDir": "/Users/samu/sunstead/switchboard/sample-app-migrated",
+  "changes": [
+    {
+      "path": ".env.example",
+      "op": "modified",
+      "note": "Migrated-app docs/config.",
+      "added": 3,
+      "removed": 8
+    },
+    {
+      "path": "README.md",
+      "op": "modified",
+      "note": "Migrated-app docs/config.",
+      "added": 19,
+      "removed": 16
+    },
+    {
+      "path": "api/.env.example",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 17,
+      "removed": 0
+    },
+    {
+      "path": "api/Dockerfile",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 11,
+      "removed": 0
+    },
+    {
+      "path": "api/README.md",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 30,
+      "removed": 0
+    },
+    {
+      "path": "api/package.json",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 29,
+      "removed": 0
+    },
+    {
+      "path": "api/src/auth.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 53,
+      "removed": 0
+    },
+    {
+      "path": "api/src/data.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 57,
+      "removed": 0
+    },
+    {
+      "path": "api/src/db.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 46,
+      "removed": 0
+    },
+    {
+      "path": "api/src/index.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 25,
+      "removed": 0
+    },
+    {
+      "path": "api/src/realtime.kafka.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 79,
+      "removed": 0
+    },
+    {
+      "path": "api/src/realtime.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 39,
+      "removed": 0
+    },
+    {
+      "path": "api/src/session.ts",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 31,
+      "removed": 0
+    },
+    {
+      "path": "api/tsconfig.json",
+      "op": "added",
+      "note": "Generated thin API over Aiven Postgres.",
+      "added": 14,
+      "removed": 0
+    },
+    {
+      "path": "src/lib/aivenClient.ts",
+      "op": "added",
+      "note": "New Aiven API client (replaces supabaseClient).",
+      "added": 34,
+      "removed": 0
+    },
+    {
+      "path": "src/lib/auth.ts",
+      "op": "modified",
+      "note": "auth.* -> Aiven auth endpoints (same signatures).",
+      "added": 29,
+      "removed": 18
+    },
+    {
+      "path": "src/lib/db.ts",
+      "op": "modified",
+      "note": "query builder -> Aiven API calls (same signatures).",
+      "added": 14,
+      "removed": 35
+    },
+    {
+      "path": "src/lib/realtime.ts",
+      "op": "modified",
+      "note": "channel() -> SSE over the Aiven API.",
+      "added": 12,
+      "removed": 16
+    },
+    {
+      "path": "src/lib/storage.ts",
+      "op": "modified",
+      "note": "storage shim (Aiven has no object store yet).",
+      "added": 9,
+      "removed": 13
+    },
+    {
+      "path": "src/lib/supabaseClient.ts",
+      "op": "removed",
+      "note": "Replaced by aivenClient.ts.",
+      "removed": 12
+    },
+    {
+      "path": "api/schema.sql",
+      "op": "added",
+      "note": "Aiven-targeted schema (from the Migrator).",
+      "added": 114,
+      "removed": 0
+    },
+    {
+      "path": "package.json",
+      "op": "modified",
+      "note": "Removed @supabase/supabase-js.",
+      "added": 0,
+      "removed": 1
+    }
+  ],
+  "summary": {
+    "modified": 7,
+    "added": 14,
+    "removed": 1,
+    "linesAdded": 665,
+    "linesRemoved": 119
+  }
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+*.local
+.DS_Store
+
+# real DB credentials for live demos — never commit
+samples/switchboard-*.env

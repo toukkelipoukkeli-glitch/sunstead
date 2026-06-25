@@ -1,0 +1,58 @@
+{
+  "app": "PulseBoard",
+  "provision": [
+    {
+      "serviceType": "pg",
+      "plan": "free-1-1gb",
+      "reason": "Main database (replaces Supabase Postgres)."
+    },
+    {
+      "serviceType": "kafka",
+      "plan": "startup-2",
+      "reason": "Realtime pub/sub for high fan-out (replaces Supabase Realtime)."
+    }
+  ],
+  "authTables": [
+    "app_users",
+    "sessions"
+  ],
+  "appTables": [
+    "boards",
+    "cards",
+    "profiles"
+  ],
+  "rlsPolicies": 6,
+  "kafkaTopics": [
+    "cards.changes"
+  ],
+  "rewrites": [
+    {
+      "file": "src/lib/auth.ts",
+      "reason": "Swap supabase.auth.* for the Aiven auth endpoints."
+    },
+    {
+      "file": "src/lib/db.ts",
+      "reason": "Swap the query builder for typed calls to the Aiven API."
+    },
+    {
+      "file": "src/lib/realtime.ts",
+      "reason": "Swap supabase.channel() for the Aiven SSE/Kafka stream."
+    },
+    {
+      "file": "src/lib/storage.ts",
+      "reason": "Stub storage until Aiven object storage exists (gap)."
+    }
+  ],
+  "gaps": [
+    {
+      "feature": "Supabase Storage",
+      "why": "Aiven has no managed S3-compatible object store, so avatar/file uploads have no drop-in target.",
+      "recommendation": "Aiven for Object Storage (S3 API). Until then the app keeps Supabase Storage or wires its own bucket."
+    },
+    {
+      "feature": "RLS role/grant migration via MCP",
+      "why": "The Aiven MCP pg_write tool blocks GRANT/CREATE ROLE, so non-owner RLS roles must be created out-of-band.",
+      "recommendation": "Allow scoped role/grant statements in the MCP so RLS-complete migrations are fully autonomous."
+    }
+  ]
+}

@@ -10,12 +10,27 @@ Use it to:
 - avoid repeated execution mistakes
 - run a short postmortem after every event
 
-Run the current Tangled Evidence Radar prototype:
+Run the current Tangled Evidence Radar prototype (Tangled challenge):
 
 ```sh
 npm install
 npm run dev
 ```
+
+Run the Switchboard / Vibe Deploy prototype (Aiven challenge):
+
+```sh
+cd switchboard
+npm install
+npm run dev
+```
+
+Challenge entries:
+
+- **Tangled** → Tangled Evidence Radar (root `src/`, docs below)
+- **Aiven** → [Switchboard / Vibe Deploy](switchboard/README.md): an agent crew that migrates
+  a Lovable/Supabase app onto Aiven through the MCP. See [switchboard/PITCH.md](switchboard/PITCH.md),
+  [switchboard/DEMO.md](switchboard/DEMO.md), and [switchboard/proof/migration-proof.md](switchboard/proof/migration-proof.md).
 
 Read in this order:
 

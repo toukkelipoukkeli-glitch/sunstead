@@ -1,0 +1,302 @@
+/* ============================================================================
+   Aiven design tokens
+   ----------------------------------------------------------------------------
+   Modeled on Aiven's public design system (aiven.io): the full primitive color
+   ramps, the dark-first semantic layer, brand typography (Funnel Display /
+   Inter / Geist Mono), spacing, radii, and motion.
+
+   Three tiers:
+     1. Primitives   — raw color ramps + scales. Never reference directly in UI.
+     2. Semantic     — role-based tokens (surface / text / brand / state).
+                       Light is the default; `.dark` flips the whole app.
+     3. Aliases      — Tailwind-style scale tokens (type, space, radius, motion).
+   ========================================================================== */
+
+:root {
+  /* ----------------------------------------------------------------------
+     1 · PRIMITIVE COLOR RAMPS
+     -------------------------------------------------------------------- */
+
+  /* Brand — primary green (the signature Aiven green is -40 #5ffa74) */
+  --color-green-0:  #effef4;
+  --color-green-10: #d9ffe9;
+  --color-green-20: #b5fdcc;
+  --color-green-30: #8dff9c;
+  --color-green-40: #5ffa74;   /* ← signature brand green */
+  --color-green-50: #1fdc6f;
+  --color-green-60: #0ab060;
+  --color-green-70: #088247;
+  --color-green-80: #135d39;
+  --color-green-90: #021a0d;
+
+  /* Brand — teal */
+  --color-teal-0:  #f0fefe;
+  --color-teal-10: #d9f9f8;
+  --color-teal-30: #75e6e4;
+  --color-teal-40: #2ed0cd;
+  --color-teal-50: #1bb2b0;
+  --color-teal-60: #007b78;
+
+  /* Light blue */
+  --color-light-blue-0:  #ecfcff;
+  --color-light-blue-20: #a7e8fa;
+  --color-light-blue-30: #59d2f4;
+  --color-light-blue-40: #27bbe9;
+  --color-light-blue-50: #0b9ecf;
+  --color-light-blue-60: #0c7dae;
+  --color-light-blue-70: #076188;
+  --color-light-blue-90: #0a2c42;
+
+  /* Deep blue — the accent / highlight family */
+  --color-deep-blue-0:  #ecefff;
+  --color-deep-blue-20: #c2c9ff;
+  --color-deep-blue-30: #9ca5ff;
+  --color-deep-blue-40: #7683ff;
+  --color-deep-blue-50: #6f64ff;   /* ← accent / highlight */
+  --color-deep-blue-60: #3c42d0;
+  --color-deep-blue-70: #2c33a5;
+  --color-deep-blue-90: #1e155f;
+
+  /* Yellow */
+  --color-yellow-0:  #fefce8;
+  --color-yellow-10: #fffac2;
+  --color-yellow-20: #fff189;
+  --color-yellow-40: #fdcd12;
+  --color-yellow-60: #a36d00;
+  --color-yellow-70: #6e4d00;
+  --color-yellow-80: #4a3300;
+  --color-yellow-90: #2b1e00;
+
+  /* Orange */
+  --color-orange-10: #ffe6d4;
+  --color-orange-30: #ff965e;
+  --color-orange-40: #fe7239;
+  --color-orange-70: #872012;
+
+  /* Red */
+  --color-red-0:  #fff1f1;
+  --color-red-20: #ffa198;
+  --color-red-30: #ff7b72;
+  --color-red-40: #f85149;
+  --color-red-60: #b62324;
+  --color-red-70: #8e1519;
+  --color-red-80: #67060c;
+  --color-red-90: #2b0001;
+
+  /* Purple */
+  --color-purple-0:  #fdf4ff;
+  --color-purple-30: #f2aafd;
+  --color-purple-40: #ea78fa;
+  --color-purple-50: #df56f2;
+  --color-purple-60: #c224d5;
+  --color-purple-90: #4c034f;
+
+  /* Grey — the neutral spine */
+  --color-grey-0:   #f7f7fa;
+  --color-grey-5:   #fafafa;
+  --color-grey-10:  #f4f4f4;
+  --color-grey-20:  #ebebeb;
+  --color-grey-30:  #d6d6d6;
+  --color-grey-40:  #919294;
+  --color-grey-50:  #68696b;
+  --color-grey-60:  #444547;
+  --color-grey-70:  #2d2e30;
+  --color-grey-80:  #0d0e10;
+  --color-grey-90:  #0a0a0a;
+  --color-grey-100: #05080f;
+
+  --color-black: #05080f;
+  --color-white: #ffffff;
+
+  /* Product accents (used across Aiven's service marks) */
+  --color-kafka:      var(--color-purple-50);
+  --color-postgres:   var(--color-deep-blue-50);
+  --color-clickhouse: var(--color-yellow-40);
+  --color-opensearch: var(--color-light-blue-30);
+  --color-valkey:     var(--color-deep-blue-30);
+  --color-mysql:      var(--color-teal-30);
+  --color-grafana:    var(--color-orange-30);
+
+  /* ----------------------------------------------------------------------
+     2 · SEMANTIC LAYER — light theme (default)
+     -------------------------------------------------------------------- */
+
+  /* Surfaces */
+  --surface-canvas:  var(--color-grey-0);   /* page background        */
+  --surface:         var(--color-white);    /* cards / panels         */
+  --surface-sunken:  var(--color-grey-10);  /* insets, subtle fills   */
+  --surface-inverse: var(--color-grey-100); /* near-black code blocks */
+
+  /* Text */
+  --text-strong:     #1a1a1a;               /* headings / body        */
+  --text-muted:      var(--color-grey-50);  /* secondary              */
+  --text-faint:      var(--color-grey-40);  /* tertiary / hints       */
+  --text-on-inverse: var(--color-grey-30);  /* text on dark surfaces  */
+
+  /* Borders */
+  --border:        var(--color-grey-20);
+  --border-strong: var(--color-grey-30);
+
+  /* Brand (green) — legible-on-light by default, bright reserved for dark */
+  --brand:             var(--color-green-70);  /* CTA fill / accent text */
+  --brand-strong:      var(--color-green-80);  /* hover                  */
+  --brand-bright:      var(--color-green-40);  /* signature accent       */
+  --brand-soft:        var(--color-green-0);   /* tinted backgrounds     */
+  --brand-soft-border: var(--color-green-30);
+  --on-brand:          var(--color-white);     /* text on brand fill     */
+
+  /* Solid inverse fill — primary buttons & the active step pill */
+  --fill-solid:    #1a1a1a;
+  --on-fill-solid: var(--color-white);
+
+  /* Accent (deep blue) */
+  --accent:      var(--color-deep-blue-50);
+  --accent-soft: var(--color-deep-blue-0);
+
+  /* State */
+  --success:       var(--color-green-60);
+  --warn-fg:       var(--color-yellow-60);
+  --warn-soft:     var(--color-yellow-0);
+  --warn-border:   #f3e3a8;
+  --danger-fg:     var(--color-red-60);
+  --danger-soft:   var(--color-red-0);
+  --danger-border: var(--color-red-20);
+
+  /* Focus ring */
+  --ring: color-mix(in oklab, var(--brand) 32%, transparent);
+
+  /* ----------------------------------------------------------------------
+     3 · TYPOGRAPHY
+     -------------------------------------------------------------------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Funnel Display", var(--font-sans);
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+               Consolas, "Liberation Mono", monospace;
+
+  /* Type scale (Aiven's own rem ramp) */
+  --text-xxs:  0.75rem;     /* 12 */
+  --text-xs:   0.875rem;    /* 14 */
+  --text-sm:   1rem;        /* 16 */
+  --text-base: 1rem;        /* 16 */
+  --text-md:   1.25rem;     /* 20 */
+  --text-lg:   1.5rem;      /* 24 */
+  --text-xl:   1.875rem;    /* 30 */
+  --text-2xl:  2.375rem;    /* 38 */
+  --text-3xl:  3rem;        /* 48 */
+  --text-4xl:  4.5rem;      /* 72 */
+  --text-5xl:  6rem;        /* 96 */
+
+  --font-weight-normal:   400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.625;
+  --tracking-tight:  -0.02em;
+  --tracking-normal: 0em;
+
+  /* ----------------------------------------------------------------------
+     4 · SPACING (4px base, plus Aiven's layout scale)
+     -------------------------------------------------------------------- */
+  --space-0: 0px;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  --layout-1: 16px;
+  --layout-2: 24px;
+  --layout-3: 32px;
+  --layout-4: 48px;
+  --layout-5: 64px;
+  --layout-6: 96px;
+  --layout-7: 160px;
+
+  /* ----------------------------------------------------------------------
+     5 · RADII
+     -------------------------------------------------------------------- */
+  --radius-xs:  0.125rem;  /* 2  */
+  --radius-sm:  0.25rem;   /* 4  */
+  --radius-md:  0.375rem;  /* 6  */
+  --radius-lg:  0.5rem;    /* 8  */
+  --radius-xl:  0.75rem;   /* 12 */
+  --radius-2xl: 2rem;      /* 32 */
+  --radius-pill: 999px;
+
+  /* ----------------------------------------------------------------------
+     6 · ELEVATION + MOTION
+     -------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px #05080f0f;
+  --shadow-md: 0 3px 3px #0000001f;
+  --shadow-lg: 0 12px 32px -8px #05080f1f;
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.4, 0, 1, 1);
+  --ease-bounce: cubic-bezier(0.25, 1, 0.5, 1);
+
+  --animate-fade-in:       fadeIn 0.4s var(--ease-out);
+  --animate-fade-in-scale: fadeInScale 0.25s var(--ease-out);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   2b · SEMANTIC LAYER — dark theme (Aiven's default brand look)
+   Add `class="dark"` to <html> to flip the entire app.
+   ========================================================================== */
+:root.dark,
+.dark {
+  --surface-canvas:  var(--color-grey-100);
+  --surface:         var(--color-grey-80);
+  --surface-sunken:  var(--color-black);
+  --surface-inverse: var(--color-black);
+
+  --text-strong:     var(--color-white);
+  --text-muted:      var(--color-grey-30);
+  --text-faint:      var(--color-grey-40);
+  --text-on-inverse: var(--color-grey-30);
+
+  --border:          var(--color-grey-70);
+  --border-strong:   var(--color-grey-60);
+
+  --brand:             var(--color-green-40);  /* bright green pops on dark */
+  --brand-strong:      var(--color-green-30);
+  --brand-soft:        var(--color-green-90);
+  --brand-soft-border: var(--color-green-80);
+  --on-brand:          var(--color-grey-100);
+
+  --fill-solid:    var(--color-grey-0);
+  --on-fill-solid: var(--color-grey-100);
+
+  --accent:      var(--color-deep-blue-40);
+  --accent-soft: var(--color-deep-blue-90);
+
+  --success:       var(--color-green-50);
+  --warn-fg:       var(--color-yellow-40);
+  --warn-soft:     var(--color-yellow-90);
+  --warn-border:   var(--color-yellow-80);
+  --danger-fg:     var(--color-red-40);
+  --danger-soft:   var(--color-red-90);
+  --danger-border: var(--color-red-80);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Keyframes referenced by the motion tokens
+   ========================================================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}

@@ -1,0 +1,137 @@
+{
+  "root": "sample-app",
+  "filesScanned": 8,
+  "tables": [
+    "boards",
+    "cards",
+    "profiles"
+  ],
+  "authMethods": [
+    "getUser",
+    "onAuthStateChange",
+    "signInWithPassword",
+    "signOut",
+    "signUp"
+  ],
+  "realtimeChannels": [
+    {
+      "channel": "board:${boardId}",
+      "table": "cards"
+    }
+  ],
+  "storageBuckets": [
+    "avatars"
+  ],
+  "findings": [
+    {
+      "surface": "auth",
+      "detail": "auth.signUp()",
+      "file": "src/lib/auth.ts",
+      "line": 7,
+      "snippet": "const { data, error } = await supabase.auth.signUp({ email, password })"
+    },
+    {
+      "surface": "db",
+      "detail": "from(\"profiles\")",
+      "file": "src/lib/auth.ts",
+      "line": 11,
+      "snippet": "await supabase.from('profiles').insert({ id: data.user.id, display_name: displayName })"
+    },
+    {
+      "surface": "auth",
+      "detail": "auth.signInWithPassword()",
+      "file": "src/lib/auth.ts",
+      "line": 17,
+      "snippet": "const { data, error } = await supabase.auth.signInWithPassword({ email, password })"
+    },
+    {
+      "surface": "auth",
+      "detail": "auth.signOut()",
+      "file": "src/lib/auth.ts",
+      "line": 23,
+      "snippet": "await supabase.auth.signOut()"
+    },
+    {
+      "surface": "auth",
+      "detail": "auth.getUser()",
+      "file": "src/lib/auth.ts",
+      "line": 27,
+      "snippet": "const { data } = await supabase.auth.getUser()"
+    },
+    {
+      "surface": "auth",
+      "detail": "auth.onAuthStateChange()",
+      "file": "src/lib/auth.ts",
+      "line": 32,
+      "snippet": "return supabase.auth.onAuthStateChange((_event, session) => cb(Boolean(session)))"
+    },
+    {
+      "surface": "db",
+      "detail": "from(\"cards\")",
+      "file": "src/lib/db.ts",
+      "line": 58,
+      "snippet": "const { error } = await supabase.from('cards').update({ votes }).eq('id', cardId)"
+    },
+    {
+      "surface": "realtime",
+      "detail": "channel \"board:${boardId}\"",
+      "file": "src/lib/realtime.ts",
+      "line": 10,
+      "snippet": ".channel(`board:${boardId}`)"
+    },
+    {
+      "surface": "realtime",
+      "detail": "watches table \"cards\"",
+      "file": "src/lib/realtime.ts",
+      "line": 13,
+      "snippet": "{ event: 'INSERT', schema: 'public', table: 'cards', filter: `board_id=eq.${boardId}` },"
+    },
+    {
+      "surface": "storage",
+      "detail": "bucket \"avatars\"",
+      "file": "src/lib/storage.ts",
+      "line": 10,
+      "snippet": "const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })"
+    },
+    {
+      "surface": "storage",
+      "detail": "storage.upload()",
+      "file": "src/lib/storage.ts",
+      "line": 10,
+      "snippet": "const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: true })"
+    },
+    {
+      "surface": "storage",
+      "detail": "bucket \"avatars\"",
+      "file": "src/lib/storage.ts",
+      "line": 12,
+      "snippet": "const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)"
+    },
+    {
+      "surface": "storage",
+      "detail": "storage.getPublicUrl()",
+      "file": "src/lib/storage.ts",
+      "line": 12,
+      "snippet": "const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)"
+    }
+  ],
+  "schema": {
+    "tables": [
+      {
+        "name": "profiles",
+        "columns": 4
+      },
+      {
+        "name": "boards",
+        "columns": 4
+      },
+      {
+        "name": "cards",
+        "columns": 7
+      }
+    ],
+    "policies": 6,
+    "indexes": 2,
+    "hasRealtimePublication": true
+  }
+}

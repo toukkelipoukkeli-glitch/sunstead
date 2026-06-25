@@ -1,0 +1,56 @@
+{
+  "app": "PulseBoard",
+  "target": {
+    "project": "samukahonen-dc30",
+    "service": "pg-22a59da",
+    "host": "pg-22a59da-samukahonen-dc30.e.aivencloud.com:14340",
+    "plan": "free-1-1gb",
+    "cloud": "do-ams",
+    "kafkaService": "kafka-1b71550b"
+  },
+  "migrated": [
+    {
+      "item": "Database schema (3 tables, 2 indexes)",
+      "status": "done",
+      "note": "Recreated on Aiven Postgres via MCP SQL."
+    },
+    {
+      "item": "RLS policies (6)",
+      "status": "done",
+      "note": "Policy logic transfers verbatim; auth.uid() rebound to a per-request GUC."
+    },
+    {
+      "item": "Auth (users + sessions)",
+      "status": "done",
+      "note": "Recreated as pgcrypto tables + a thin auth API."
+    },
+    {
+      "item": "Realtime (1 channel(s))",
+      "status": "partial",
+      "note": "NOTIFY-over-SSE works today; Kafka topics cards.changes for scale."
+    },
+    {
+      "item": "Storage (file uploads)",
+      "status": "skipped",
+      "note": "No managed Aiven object store; left on Supabase / external bucket."
+    }
+  ],
+  "gaps": [
+    {
+      "feature": "Supabase Storage",
+      "why": "Aiven has no managed S3-compatible object store, so avatar/file uploads have no drop-in target.",
+      "recommendation": "Aiven for Object Storage (S3 API). Until then the app keeps Supabase Storage or wires its own bucket."
+    },
+    {
+      "feature": "RLS role/grant migration via MCP",
+      "why": "The Aiven MCP pg_write tool blocks GRANT/CREATE ROLE, so non-owner RLS roles must be created out-of-band.",
+      "recommendation": "Allow scoped role/grant statements in the MCP so RLS-complete migrations are fully autonomous."
+    }
+  ],
+  "recommendations": [
+    "Supabase Storage: Aiven for Object Storage (S3 API). Until then the app keeps Supabase Storage or wires its own bucket.",
+    "RLS role/grant migration via MCP: Allow scoped role/grant statements in the MCP so RLS-complete migrations are fully autonomous.",
+    "Ship an Aiven MCP \"migrate from Supabase\" command so vibe-coded apps onboard in one step."
+  ],
+  "generatedAt": "2026-06-25T07:08:42.335Z"
+}
