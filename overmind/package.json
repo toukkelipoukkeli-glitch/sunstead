@@ -1,0 +1,39 @@
+{
+  "name": "aiven-overmind",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Autonomous agent swarm that rebuilds a Lovable/Supabase backend on Aiven — and operates it.",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate:demo": "tsx server/cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@hono/node-server": "^1.13.7",
+    "@workos-inc/node": "^7.40.0",
+    "dotenv": "^16.4.7",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

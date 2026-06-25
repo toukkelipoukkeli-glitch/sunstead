@@ -1,0 +1,80 @@
+// Aiven-style top nav. The wordmark reads "Aiven" (the platform) with the product
+// name "Overmind" beside it — so the page reads as a native Aiven product page.
+// "Sign in" / "Start free" point at the WorkOS auth routes the auth agent builds;
+// if those 404 in dev they degrade to the console (handled in authHref()).
+
+function authHref(path: string): string {
+  // In dev the WorkOS routes may not exist yet → fall back to the console.
+  // We optimistically link to the real route; onError below swaps to the console.
+  return path
+}
+
+export function Nav() {
+  return (
+    <header className="lp-nav">
+      <div className="lp-nav-inner">
+        <a className="lp-wordmark" href="#/">
+          <span className="lp-logo-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path
+                d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <path d="M12 7 L17 9.5 V14.5 L12 17 L7 14.5 V9.5 Z" fill="currentColor" opacity="0.9" />
+            </svg>
+          </span>
+          <span className="lp-logo-text">
+            Aiven<span className="lp-logo-divider">/</span>
+            <span className="lp-logo-product">Overmind</span>
+          </span>
+        </a>
+
+        <nav className="lp-nav-links">
+          <a href="#how">How it works</a>
+          <a href="#agents">Agents</a>
+          <a href="#deploy">Get it on Aiven</a>
+          <a className="lp-nav-console" href="#/app">
+            Console
+          </a>
+        </nav>
+
+        <div className="lp-nav-cta">
+          <a
+            className="lp-btn lp-btn-ghost"
+            href={authHref('/api/auth/login')}
+            onClick={(e) => degradeToConsole(e, '/api/auth/login')}
+          >
+            Sign in
+          </a>
+          <a
+            className="lp-btn lp-btn-primary"
+            href={authHref('/api/auth/login?screen_hint=sign-up')}
+            onClick={(e) => degradeToConsole(e, '/api/auth/login?screen_hint=sign-up')}
+          >
+            Start free
+          </a>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+// If the WorkOS route isn't live yet (dev), a HEAD probe failing → open the console.
+// We do this lazily on click so we never block render. Real route wins when it exists.
+async function degradeToConsole(e: React.MouseEvent<HTMLAnchorElement>, path: string) {
+  e.preventDefault()
+  try {
+    const res = await fetch(path, { method: 'GET', redirect: 'manual' })
+    // 0 (opaqueredirect) or 2xx/3xx → the auth route exists; follow it.
+    if (res.type === 'opaqueredirect' || res.status === 0 || (res.status >= 200 && res.status < 400)) {
+      window.location.href = path
+      return
+    }
+  } catch {
+    /* network/route missing in dev → console fallback below */
+  }
+  window.location.hash = '#/app'
+}
