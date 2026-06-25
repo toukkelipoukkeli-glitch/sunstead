@@ -6,7 +6,7 @@ export const setupRuntimeConfigStorageKey = "aiden.setupRuntimeConfig"
 export const managedSetupProfile: SetupProfile = {
   sourceKind: "pulsewall_demo",
   sourceDataPath: "seeded_demo_data",
-  aivenWorkspaceMode: "henri_preconnected",
+  aivenWorkspaceMode: "create_new",
   migrationScope: {
     shadowMigration: true,
     scopedDemoCutover: true,
@@ -15,7 +15,7 @@ export const managedSetupProfile: SetupProfile = {
     storageMigration: "adapter_required"
   },
   sourceLabel: "PulseWall managed profile",
-  workspaceLabel: "Henri pre-connected workspace",
+  workspaceLabel: "Fresh Aiven landing zone",
   detectedBehaviors: ["Supabase client", "tables", "realtime", "auth", "storage", "RLS", "RPC/edge markers"]
 }
 
@@ -40,7 +40,7 @@ export const productSetupProfile = (input: {
 }): SetupProfile => ({
   sourceKind: input.sourceKind ?? "owned_supabase_project",
   sourceDataPath: input.sourceDataPath ?? "supabase_db_url",
-  aivenWorkspaceMode: "henri_preconnected",
+  aivenWorkspaceMode: "create_new",
   migrationScope: {
     shadowMigration: true,
     scopedDemoCutover: true,

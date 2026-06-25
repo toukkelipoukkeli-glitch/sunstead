@@ -51,7 +51,7 @@ Read these in order before code:
 8. [VERIFICATION_RUNBOOK.md](VERIFICATION_RUNBOOK.md) — demo preflight, test gates, fallbacks, and stage runbook.
 9. [live-aiven-verification-gate/README.md](live-aiven-verification-gate/README.md) — focused M05.5 spec for proving M01/M03/M05 against live Aiven.
 10. [access-broker-permission-ux/README.md](access-broker-permission-ux/README.md) — visible permission preflight, access snapshot contract, and setup/product-action split.
-11. [aiven-workspace-bootstrap/README.md](aiven-workspace-bootstrap/README.md) — M06B spec for connect/create Aiven workspace framing and demo-safe use of Henri's workspace.
+11. [aiven-workspace-bootstrap/README.md](aiven-workspace-bootstrap/README.md) — M06B spec for connect/create Aiven workspace framing; current runtime creates a fresh Aiven Postgres service per run.
 12. [source-intake-workspace-setup/README.md](source-intake-workspace-setup/README.md) — M06C spec for source selection, source data path, workspace selection, and scope confirmation before the control room.
 13. [GENERAL_LOVABLE_TO_AIVEN_MIGRATION_SPEC.md](GENERAL_LOVABLE_TO_AIVEN_MIGRATION_SPEC.md) — product-generalization plan and implemented first slice for setup profile, generic scanner API, manifest path, and executor roadmap.
 14. [one-click-agent-runtime/README.md](one-click-agent-runtime/README.md) — M05.6 spec for turning `Graduate To Aiven` into a bounded one-click agent run.
@@ -74,8 +74,8 @@ Read these in order before code:
 | 05.6 | One-click agent runtime | LIVE PG VERIFIED | 12 | 90 | `Graduate To Aiven` runs the bounded workflow end to end; Anthropic SDK is report-only and Kafka warning-only |
 | 05.7 | Anthropic Agent SDK reasoner | LIVE VERIFIED | 6 | 90 | Agent SDK receives Aiven MCP directly, uses allowlisted tools, and falls back deterministically |
 | 06 | Control room UI hardening + final report | BUILT / LIVE PG VERIFIED | 12 | 85 | Final report memo, timeline status states, realtime/Kafka proof clarity, validation pending states |
-| 06B | Aiven workspace bootstrap framing | BUILT / LIVE PG VERIFIED | 4 | 95 | Setup is framed as connect/create Aiven workspace; demo uses Henri's pre-connected workspace without committing secrets |
-| 06C | Source intake and workspace setup | BUILT / LIVE PG VERIFIED | 5 | 95 | `/setup` is the default entry surface and shows PulseWall/Henri workspace as selected demo profile choices, not hidden hardcoding |
+| 06B | Aiven workspace bootstrap framing | BUILT / FRESH PG PROVISIONING | 4 | 95 | Setup is framed as connect Aiven account/project, then create a fresh Aiven Postgres target per run without committing secrets |
+| 06C | Source intake and workspace setup | BUILT / FRESH PG PROVISIONING | 5 | 95 | `/setup` is the default entry surface and shows PulseWall plus fresh Aiven landing-zone creation as selected choices, not hidden hardcoding |
 | 07 | Rehearsal hardening | BUILT / LIVE PG VERIFIED | 12 | 95 | `demo:preflight`, `demo:reset`, `demo:fallback`, and two-run `demo:rehearse` pass |
 
 ## Critical Bottleneck

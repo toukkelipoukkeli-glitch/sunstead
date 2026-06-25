@@ -11,14 +11,20 @@ const statusIcon = (status: RunEvent["status"]) => {
   return <CheckCircle2 aria-hidden="true" size={16} />
 }
 
-export const AgentMigrationSpine = ({ events }: { events: RunEvent[] }) => (
+export const AgentMigrationSpine = ({
+  events,
+  plannedEventCount
+}: {
+  events: RunEvent[]
+  plannedEventCount: number
+}) => (
   <section className="panel timeline-panel">
     <div className="panel-header">
       <div>
         <p className="eyebrow">Migration run</p>
         <h2>Execution timeline</h2>
       </div>
-      <span className="path-chip">{events.length}/14</span>
+      <span className="path-chip">{events.length}/{plannedEventCount}</span>
     </div>
     <div className="timeline-list">
       {events.length === 0 ? (
@@ -39,7 +45,7 @@ export const AgentMigrationSpine = ({ events }: { events: RunEvent[] }) => (
           </div>
         ))
       )}
-      {events.length < 14 ? (
+      {events.length < plannedEventCount ? (
         <div className="timeline-item pending">
           {events.length === 0 ? <Circle aria-hidden="true" size={16} /> : <TimerReset aria-hidden="true" size={16} />}
           <div>

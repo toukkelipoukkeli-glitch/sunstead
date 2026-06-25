@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx src/server.ts",
+    "dev:watch": "tsx watch src/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@aiden/aiven-ops": "0.1.0",
+    "@aiden/adapter-generator": "0.1.0",
     "@aiden/contracts": "0.1.0",
     "@aiden/fixtures": "0.1.0",
     "@aiden/github-source": "0.1.0",

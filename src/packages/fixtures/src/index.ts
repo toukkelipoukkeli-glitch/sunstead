@@ -57,6 +57,21 @@ export const fixtureEvents: RunEvent[] = [
   },
   {
     runId: fixtureRunId,
+    type: "aiven.mcp.agent.probed",
+    agent: "aiven_operator",
+    state: "aiven_shadow_ready",
+    status: "ok",
+    source: "fixture",
+    summary: "Aiven Operator Agent launched through Anthropic Agent SDK and inspected Aiven through MCP.",
+    details: {
+      agentRuntime: "anthropic_agent_sdk",
+      controlPlane: "anthropic_agent_sdk_aiven_mcp",
+      observedToolUses: ["mcp__aiven__aiven_project_list"]
+    },
+    createdAt: at(16)
+  },
+  {
+    runId: fixtureRunId,
     type: "aiven.project.detected",
     agent: "aiven_operator",
     state: "aiven_shadow_ready",

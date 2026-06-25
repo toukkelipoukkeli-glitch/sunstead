@@ -81,7 +81,7 @@ Implemented in this mission:
 
 Remaining:
 
-- Anthropic Agent SDK integration is now owned by [`../anthropic-agent-sdk-reasoner/README.md`](../anthropic-agent-sdk-reasoner/README.md); it is text/report-only and fail-open.
+- Anthropic Agent SDK integration is now owned by [`../anthropic-agent-sdk-reasoner/README.md`](../anthropic-agent-sdk-reasoner/README.md); report generation is text-only, while the Aiven Operator probe may make one bounded read-only Aiven MCP inspection.
 - Mission 06A still needs the visible access-broker permission panel before the one-click action.
 - Live Kafka remains pending until Kafka credentials are configured; missing Kafka stays warning-only.
 
@@ -235,7 +235,10 @@ The UI must show `live`, `cached`, or `fixture` labels from the existing contrac
 
 ## Anthropic / Agent SDK Use
 
-The repo does not currently use Anthropic or an agent SDK. This mission may add a small bounded reasoner, but it must be optional and fail-open.
+The repo uses Anthropic Agent SDK in two bounded places, both optional and fail-open:
+
+- a Report/CTO reasoner that receives sanitized proof facts and returns text;
+- an Aiven Operator probe that receives safe run metadata, calls only allowlisted read-only Aiven MCP tools, and records whether MCP control-plane context was reachable.
 
 Add an adapter interface:
 
@@ -252,7 +255,8 @@ Implementations:
 | Implementation | Required | Behavior |
 | --- | --- | --- |
 | `deterministicReasoner` | yes | template-based summaries; no network |
-| `anthropicAgentSdkReasoner` | optional | uses `@anthropic-ai/claude-agent-sdk` and `ANTHROPIC_API_KEY` for text only |
+| `anthropicAgentSdkReasoner` | optional | uses `@anthropic-ai/claude-agent-sdk` and `ANTHROPIC_API_KEY` for sanitized report text |
+| `runAivenMcpOperatorProbe` | optional | uses `@anthropic-ai/claude-agent-sdk`, direct Aiven MCP config, and allowlisted read-only Aiven MCP tools |
 
 Allowed LLM uses:
 
@@ -261,6 +265,7 @@ Allowed LLM uses:
 - generate final CTO recommendation copy;
 - explain a failed gate in human language;
 - generate patch notes for the scoped adapter.
+- inspect Aiven project/service metadata through allowlisted read-only Aiven MCP tools and record the observed tool call.
 
 Forbidden LLM uses:
 

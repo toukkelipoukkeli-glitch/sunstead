@@ -63,23 +63,23 @@ const dataOptions: SetupOption[] = [
 
 const workspaceOptions: SetupOption[] = [
   {
-    title: "Henri pre-connected workspace",
-    eyebrow: "Selected workspace",
-    copy: "Connected Aiven workspace using local secure credentials and ignored local secrets.",
+    title: "Create fresh Aiven landing zone",
+    eyebrow: "Selected target",
+    copy: "Aiden creates a new Aiven Postgres service for every migration run.",
     state: "selected",
     icon: ShieldCheck
   },
   {
-    title: "Connect existing Aiven workspace",
-    eyebrow: "Coming soon",
-    copy: "Aiden uses the customer's Aiven account to create or verify the target data plane.",
-    state: "coming_soon",
+    title: "Use existing Aiven service",
+    eyebrow: "Disabled by default",
+    copy: "Legacy compatibility only; demo runs should not reuse old Aiven services.",
+    state: "available",
     icon: CheckCircle2
   },
   {
-    title: "Create new Aiven workspace",
+    title: "Create new Aiven account",
     eyebrow: "Coming soon",
-    copy: "If the customer does not have Aiven, Aiden creates the workspace during setup.",
+    copy: "Account signup remains outside the scoped demo; service creation happens after account access.",
     state: "coming_soon",
     icon: ArrowRight
   }
@@ -148,7 +148,7 @@ export const SetupPage = () => {
   const [sourceSslDisabled, setSourceSslDisabled] = useState(false)
   const [csvSources, setCsvSources] = useState<CsvSourceDraft[]>([])
   const [csvImportSummary, setCsvImportSummary] = useState<string | null>(null)
-  const [workspaceLabel, setWorkspaceLabel] = useState("Henri pre-connected workspace")
+  const [workspaceLabel, setWorkspaceLabel] = useState("Fresh Aiven landing zone")
   const [githubInstallUrl, setGithubInstallUrl] = useState<string | null>(null)
   const [githubInstallationId, setGithubInstallationId] = useState("")
   const [githubRepos, setGithubRepos] = useState<GitHubRepositorySummary[]>([])
@@ -247,7 +247,7 @@ export const SetupPage = () => {
       if (mode === "csv") {
         return productSetupProfile({
           sourceLabel: sourceLabel.trim() || "Lovable CSV export",
-          workspaceLabel: workspaceLabel.trim() || "Henri pre-connected workspace",
+          workspaceLabel: workspaceLabel.trim() || "Fresh Aiven landing zone",
           sourceKind: "lovable_cloud_export",
           sourceDataPath: "csv_export",
           detectedBehaviors: ["CSV table export", "schema headers", "row import", "adapter required"]
@@ -256,7 +256,7 @@ export const SetupPage = () => {
       return productSetupProfile({
         sourceLabel: sourceLabel.trim() || githubRepos[0]?.fullName || "Owned Supabase project",
         sourceRoot: sourceRoot.trim() || undefined,
-        workspaceLabel: workspaceLabel.trim() || "Henri pre-connected workspace"
+        workspaceLabel: workspaceLabel.trim() || "Fresh Aiven landing zone"
       })
     },
     [githubProfile, githubRepos, mode, sourceLabel, sourceRoot, workspaceLabel]

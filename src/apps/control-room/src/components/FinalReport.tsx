@@ -1,9 +1,11 @@
-import type { Report } from "@aiden/contracts"
+import type { CutoverArtifact, GeneratedArtifact, Report } from "@aiden/contracts"
 import {
   CheckCircle2,
   CircleDollarSign,
   Database,
   FileCheck2,
+  GitPullRequest,
+  PackageCheck,
   RadioTower,
   ReceiptText,
   RotateCcw,
@@ -15,6 +17,7 @@ import { ProofSourceBadge } from "./ProofSourceBadge"
 
 const label = (value: string) => value.replaceAll("_", " ")
 const tableLabel = (value: string) => (value === "demo_users" ? "users" : value)
+const artifactLabel = (value: string) => value.replaceAll("_", " ")
 
 const checkStatus = (checks: Report["checks"], matcher: (checkName: string) => boolean) => {
   const matched = checks.filter((check) => matcher(check.checkName))
@@ -24,7 +27,13 @@ const checkStatus = (checks: Report["checks"], matcher: (checkName: string) => b
   return "pending"
 }
 
-export const FinalReport = ({ report }: { report: Report }) => {
+type FinalReportProps = {
+  report: Report
+  generatedArtifacts?: GeneratedArtifact[]
+  cutoverArtifacts?: CutoverArtifact[]
+}
+
+export const FinalReport = ({ report, generatedArtifacts = [], cutoverArtifacts = [] }: FinalReportProps) => {
   const kafkaChecks = report.checks.filter((check) => check.checkName.includes("kafka"))
   const passedRows = report.rowValidations.filter((row) => row.status === "passed").length
   const liveReceipts = report.receipts.filter((receipt) => receipt.source === "live").length
@@ -32,10 +41,20 @@ export const FinalReport = ({ report }: { report: Report }) => {
   const kafkaStatus = checkStatus(report.checks, (checkName) => checkName.includes("kafka"))
   const cutoverLabel =
     report.demoCutoverStatus === "passed" ? "Runtime cutover passed" : `Runtime cutover ${report.demoCutoverStatus}`
+  const runtimeLead =
+    report.demoCutoverStatus === "passed"
+      ? "Controlled runtime path is ready on Aiven."
+      : "Controlled runtime path is waiting on final proof."
   const dependencyLabel =
     report.runtimeDependency === "removed_from_scoped_demo_path"
       ? "Supabase removed from controlled runtime path"
       : label(report.runtimeDependency)
+  const generatedCount = generatedArtifacts.filter((artifact) =>
+    artifact.status === "generated" || artifact.status === "validated"
+  ).length
+  const generatedSummary = generatedArtifacts.length > 0 ? `${generatedCount}/${generatedArtifacts.length} ready` : "none recorded"
+  const prArtifact = cutoverArtifacts.find((artifact) => artifact.type === "github_pr")
+  const artifactSource = prArtifact?.source ?? generatedArtifacts[0]?.source
 
   return (
     <section className="panel report-panel">
@@ -60,13 +79,40 @@ export const FinalReport = ({ report }: { report: Report }) => {
           </div>
         </div>
         <div>
-          <strong>Controlled runtime is ready on the Aiven-backed path.</strong>
+          <strong>{runtimeLead}</strong>
           <p>
             PulseWall source stays untouched while Aiden validates the shadow data plane,
             browser event path, rollback plan, and production blockers.
           </p>
         </div>
       </div>
+
+      {generatedArtifacts.length > 0 || cutoverArtifacts.length > 0 ? (
+        <div className="artifact-summary">
+          <article>
+            <PackageCheck aria-hidden="true" size={16} />
+            <div>
+              <span>Generated package</span>
+              <strong>{generatedSummary}</strong>
+              <p>
+                {generatedArtifacts
+                  .slice(0, 2)
+                  .map((artifact) => `${artifact.title}: ${artifactLabel(artifact.status)}`)
+                  .join(" · ") || "No generated package recorded yet."}
+              </p>
+            </div>
+          </article>
+          <article>
+            <GitPullRequest aria-hidden="true" size={16} />
+            <div>
+              <span>Cutover PR</span>
+              <strong>{prArtifact ? artifactLabel(prArtifact.status) : "not opened"}</strong>
+              <p>{prArtifact?.url ?? prArtifact?.files[0] ?? "Local artifact path will show when available."}</p>
+            </div>
+          </article>
+          {artifactSource ? <ProofSourceBadge source={artifactSource} /> : null}
+        </div>
+      ) : null}
 
       <div className="memo-fact-grid">
         <article className="memo-fact">

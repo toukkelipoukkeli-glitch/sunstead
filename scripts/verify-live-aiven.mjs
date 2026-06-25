@@ -21,7 +21,10 @@ const expectedRows = {
 
 const sensitiveEnvNames = [
   "AIVEN_TOKEN",
+  "AIDEN_FRESH_AIVEN_POSTGRES_URL",
   "AIVEN_POSTGRES_URL",
+  "AIDEN_FRESH_AIVEN_KAFKA_USERNAME",
+  "AIDEN_FRESH_AIVEN_KAFKA_PASSWORD",
   "AIVEN_KAFKA_USERNAME",
   "AIVEN_KAFKA_PASSWORD",
   "SOURCE_SUPABASE_URL",
@@ -261,12 +264,43 @@ const verifyAccessPreflight = (snapshot, { requireLivePostgres }) => {
 }
 
 const verifyProofSpine = (snapshot) => {
+  const mcpAgentEvent = event(snapshot, "aiven.mcp.agent.probed")
+  if (!mcpAgentEvent) {
+    fail("aiven mcp agent", "Missing aiven.mcp.agent.probed event from the proof spine.")
+  }
+  const mcpAgentDetails = mcpAgentEvent.details ?? {}
+  if (process.env.ANTHROPIC_API_KEY?.trim() && mcpAgentDetails.launched !== true) {
+    fail("aiven mcp agent", "ANTHROPIC_API_KEY is configured but the Aiven Operator Agent did not launch.")
+  }
+  if (mcpAgentEvent.status === "ok") {
+    pass("aiven mcp agent", "Aiven Operator Agent launched and used Aiven MCP", mcpAgentDetails)
+  } else {
+    warn("aiven mcp agent", "Aiven Operator Agent probe did not observe an MCP tool call", mcpAgentDetails)
+  }
+
+  const provisionEvent = event(snapshot, "aiven.postgres.provisioned")
+  const hasProjectEnv = configuredEnv(["AIVEN_TOKEN", "AIVEN_PROJECT"])
+  const hasPreconnectedPostgres = configuredEnv(["AIVEN_POSTGRES_URL"])
+  if (hasProjectEnv) {
+    if (!provisionEvent || provisionEvent.source !== "live" || provisionEvent.status !== "ok") {
+      fail("proof spine", "Fresh Aiven Postgres provisioning is not live/ok.")
+    }
+    requirePassedCheck(snapshot, "fresh_aiven_postgres_service_created", "live", "proof spine")
+    pass("fresh postgres", "Fresh Aiven Postgres service created", provisionEvent.details)
+  } else if (hasPreconnectedPostgres) {
+    if (!provisionEvent || provisionEvent.status !== "skipped") {
+      fail("proof spine", "Pre-connected Aiven Postgres target was not selected before verification.")
+    }
+    warn("fresh postgres", "fresh provisioning skipped; using pre-connected Aiven Postgres target", provisionEvent.details)
+  } else {
+    fail("proof spine", "AIVEN_POSTGRES_URL or AIVEN_TOKEN/AIVEN_PROJECT is required for the Aiven Postgres proof.")
+  }
+
   const pgEvent = requireEvent(snapshot, "aiven.postgres.verified", "live", "ok", "proof spine")
   requireEvent(snapshot, "mcp.receipt.written", "live", "ok", "proof spine")
   requirePassedCheck(snapshot, "live_aiven_postgres_receipt_readback", "live", "proof spine")
   pass("proof spine", "Postgres receipt write/read live", pgEvent.details)
 
-  const hasProjectEnv = configuredEnv(["AIVEN_TOKEN", "AIVEN_PROJECT"])
   const projectEvent = event(snapshot, "aiven.project.detected")
   if (hasProjectEnv) {
     if (!projectEvent || projectEvent.source !== "live" || projectEvent.status !== "ok") {
@@ -277,19 +311,14 @@ const verifyProofSpine = (snapshot) => {
     warn("project visibility", "skipped; AIVEN_TOKEN and AIVEN_PROJECT are not both configured")
   }
 
-  const hasKafkaEnv = configuredEnv([
-    "AIVEN_KAFKA_BOOTSTRAP_SERVERS",
-    "AIVEN_KAFKA_USERNAME",
-    "AIVEN_KAFKA_PASSWORD"
-  ])
   const kafkaEvent = event(snapshot, "aiven.kafka.verified")
-  if (hasKafkaEnv) {
+  if (requireKafkaFlag) {
     if (!kafkaEvent || kafkaEvent.source !== "live" || kafkaEvent.status !== "ok") {
-      fail("proof spine", "Kafka env is configured but proof-spine Kafka verification is not live/ok.")
+      fail("proof spine", "Kafka is required but proof-spine Kafka verification is not live/ok.")
     }
     pass("proof spine kafka", "Kafka service/topic smoke proof live", kafkaEvent.details)
   } else {
-    warn("proof spine kafka", "skipped; Kafka env is not fully configured")
+    warn("proof spine kafka", "skipped; fresh Kafka is optional for this verifier run")
   }
 }
 
@@ -329,18 +358,13 @@ const verifyCutover = (snapshot) => {
 }
 
 const verifyKafkaAgentBus = (snapshot) => {
-  const hasKafkaEnv = configuredEnv([
-    "AIVEN_KAFKA_BOOTSTRAP_SERVERS",
-    "AIVEN_KAFKA_USERNAME",
-    "AIVEN_KAFKA_PASSWORD"
-  ])
-  const requireKafka = requireKafkaFlag || hasKafkaEnv
+  const requireKafka = requireKafkaFlag
   const kafkaEvent = event(snapshot, "kafka.agent_bus_roundtrip.passed")
   const kafkaCheck = check(snapshot, "kafka_agent_bus_roundtrip")
 
   if (requireKafka) {
     if (!kafkaEvent || kafkaEvent.source !== "live" || kafkaEvent.status !== "ok") {
-      fail("kafka agent bus", "Kafka is required/configured but agent-bus roundtrip is not live/ok.")
+      fail("kafka agent bus", "Kafka is required but agent-bus roundtrip is not live/ok.")
     }
     if (!kafkaCheck || kafkaCheck.source !== "live" || kafkaCheck.status !== "passed") {
       fail("kafka agent bus", "Kafka roundtrip check is not live/passed.")
@@ -464,7 +488,9 @@ const main = async () => {
   }
 
   verifyMcpConfig()
-  requireEnv(["AIVEN_POSTGRES_URL"])
+  if (!configuredEnv(["AIVEN_POSTGRES_URL"])) {
+    requireEnv(["AIVEN_TOKEN", "AIVEN_PROJECT"])
+  }
 
   const health = await requestJson("/api/health")
   if (health?.ok !== true) {

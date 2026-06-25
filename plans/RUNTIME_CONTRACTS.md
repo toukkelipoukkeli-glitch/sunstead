@@ -14,7 +14,7 @@ Local Aiden API / worker
   -> state machine
   -> fixture run player
   -> scanner
-  -> Aiven MCP config + direct Aiven fallback proof wrapper
+  -> Agent SDK Aiven MCP probe + direct Aiven fallback proof wrapper
   -> Postgres migration/validation
   -> Kafka produce/list for agent bus
   -> Postgres events polling bridge, SSE optional

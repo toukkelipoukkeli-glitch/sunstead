@@ -17,6 +17,7 @@ const cloneEvents = (): PulseWallEvent[] =>
 
 let posts: Post[] = clonePosts()
 let events: PulseWallEvent[] = cloneEvents()
+const dataMigrationLockKey = "aiden_sunstead_data_migration"
 
 const rankPosts = (): LeaderboardRow[] =>
   posts
@@ -90,9 +91,11 @@ const readEnv = (name: string) => {
   return value && value.length > 0 ? value : undefined
 }
 
+const readActivePostgresUrl = () => readEnv("AIDEN_FRESH_AIVEN_POSTGRES_URL") ?? readEnv("AIVEN_POSTGRES_URL")
+
 const createClient = () =>
   new Client({
-    connectionString: normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!),
+    connectionString: normalizePostgresConnectionString(readActivePostgresUrl()!),
     ssl:
       readEnv("AIVEN_POSTGRES_SSL") === "false"
         ? undefined
@@ -148,7 +151,7 @@ const withClient = async <T>(operation: (client: InstanceType<typeof Client>) =>
   }
 }
 
-export const isAivenPulseWallConfigured = () => Boolean(readEnv("AIVEN_POSTGRES_URL"))
+export const isAivenPulseWallConfigured = () => Boolean(readActivePostgresUrl())
 
 export const createAivenPulseWallProvider = ({ runId = fixtureRunId }: { runId?: string } = {}): PulseWallProvider => ({
   async listPosts() {
@@ -203,8 +206,11 @@ export const createAivenPulseWallProvider = ({ runId = fixtureRunId }: { runId?:
       const eventId = `app_event_runtime_${Date.now()}_${randomUUID().slice(0, 8)}`
       const userId = input.userId ?? "demo_user_001"
       const emoji = input.emoji || "rocket"
-      await client.query("begin")
+      let lockAcquired = false
       try {
+        await client.query("select pg_advisory_lock(hashtext($1::text))", [dataMigrationLockKey])
+        lockAcquired = true
+        await client.query("begin")
         await client.query(
           `
           insert into reactions (id, post_id, user_id, emoji, created_at)
@@ -236,6 +242,10 @@ export const createAivenPulseWallProvider = ({ runId = fixtureRunId }: { runId?:
       } catch (error) {
         await client.query("rollback").catch(() => undefined)
         throw error
+      } finally {
+        if (lockAcquired) {
+          await client.query("select pg_advisory_unlock(hashtext($1::text))", [dataMigrationLockKey]).catch(() => undefined)
+        }
       }
     })
   },

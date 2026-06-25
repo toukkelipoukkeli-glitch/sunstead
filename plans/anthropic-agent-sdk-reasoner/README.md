@@ -1,4 +1,4 @@
-# Mission Spec: Anthropic Agent SDK Report Reasoner
+# Mission Spec: Anthropic Agent SDK Report Reasoner And Aiven Operator Probe
 
 Date: 2026-06-25
 
@@ -31,11 +31,15 @@ Graduate To Aiven
 
 This mission adds Anthropic Agent SDK usage without weakening that safety model.
 
-The Agent SDK should make the demo more credible as an agentic system, but it must not become the migration executor. Aiden's infrastructure actions stay deterministic, typed, and receipt-backed.
+The Agent SDK should make the demo more credible as an agentic system, but it must not become the
+migration executor. Aiden's data-plane infrastructure actions stay deterministic, typed, and
+receipt-backed. The only SDK-controlled tool path is a bounded read-only Aiven MCP control-plane
+probe.
 
 ## Architecture Decision
 
-Use `@anthropic-ai/claude-agent-sdk` only behind the existing `AgentReasoner` interface.
+Use `@anthropic-ai/claude-agent-sdk` behind the existing `AgentReasoner` interface and the dedicated
+`runAivenMcpOperatorProbe` control-plane probe.
 
 Allowed Agent SDK role:
 
@@ -44,6 +48,11 @@ Report / CTO Agent
   -> receives sanitized JSON facts
   -> writes behavior summary, CTO recommendation, failure explanation
   -> returns text only
+
+Aiven Operator Agent
+  -> receives safe run metadata
+  -> can call only allowlisted read-only Aiven MCP tools
+  -> records whether a real MCP tool call was observed
 ```
 
 Forbidden Agent SDK role:
@@ -200,6 +209,17 @@ Record proof metadata in `proof.package.generated.details`:
 }
 ```
 
+Record Aiven MCP probe proof as `aiven.mcp.agent.probed`:
+
+```json
+{
+  "agentRuntime": "anthropic_agent_sdk",
+  "controlPlane": "anthropic_agent_sdk_aiven_mcp",
+  "launched": true,
+  "observedToolUses": ["mcp__aiven__aiven_project_list"]
+}
+```
+
 If the SDK fails:
 
 ```json
@@ -216,14 +236,16 @@ If the SDK fails:
 1. Install `@anthropic-ai/claude-agent-sdk`.
 2. Remove any direct Anthropic Messages API/fetch implementation from the reasoner.
 3. Add `anthropicAgentSdkReasoner` behind the existing `AgentReasoner` interface.
-4. Keep `deterministicReasoner` as the default fallback.
-5. Make `selectAgentReasoner()` choose SDK when `ANTHROPIC_API_KEY` exists unless `AGENT_REASONER=off`.
-6. Send sanitized structured facts only.
-7. Parse SDK stream results into a single text string.
-8. Store reasoner metadata in `proof.package.generated.details`.
-9. Surface generated recommendation in `RunSnapshot.report.ctoRecommendation`.
-10. Update verifier to assert Anthropic Agent SDK metadata when `AGENT_REASONER=anthropic`.
-11. Run typecheck, Vite build, separate-step verifier, and one-click verifier.
+4. Add `runAivenMcpOperatorProbe` for the read-only Aiven MCP control-plane check.
+5. Keep `deterministicReasoner` as the default fallback.
+6. Make `selectAgentReasoner()` choose SDK when `ANTHROPIC_API_KEY` exists unless `AGENT_REASONER=off`.
+7. Send sanitized structured facts only.
+8. Parse SDK stream results into a single text string.
+9. Store reasoner metadata in `proof.package.generated.details`.
+10. Surface generated recommendation in `RunSnapshot.report.ctoRecommendation`.
+11. Record `aiven.mcp.agent.probed` from the proof spine.
+12. Update verifier to assert Anthropic Agent SDK metadata when `AGENT_REASONER=anthropic` and Aiven MCP launch metadata when `ANTHROPIC_API_KEY` exists.
+13. Run typecheck, Vite build, separate-step verifier, and one-click verifier.
 
 ## Acceptance
 

@@ -38,7 +38,7 @@ export const SalesHomePage = () => (
         <a href="/control">Platform</a>
         <a href="/control">Docs</a>
         <a className="nav-outline" href="/control">Open control room</a>
-        <a className="nav-solid" href="/control">Get building</a>
+        <a className="nav-solid" href="/setup">Get building</a>
       </nav>
     </header>
 
@@ -53,7 +53,7 @@ export const SalesHomePage = () => (
           with receipts, validation, and rollback before production cutover.
         </p>
         <div className="sales-actions">
-          <a className="primary-button" href="/control">
+          <a className="primary-button" href="/setup">
             Graduate To Aiven
             <ArrowRight aria-hidden="true" size={17} />
           </a>
@@ -180,8 +180,8 @@ export const SalesHomePage = () => (
 
     <section className="sales-final-cta">
       <h2>Stop managing migration risk. Start building on Aiven.</h2>
-      <a className="primary-button" href="/control">
-        Open control room
+      <a className="primary-button" href="/setup">
+        Start migration setup
         <ArrowRight aria-hidden="true" size={17} />
       </a>
     </section>

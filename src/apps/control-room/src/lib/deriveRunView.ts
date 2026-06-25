@@ -1,8 +1,11 @@
 import type { RunSnapshot } from "@aiden/contracts"
+import { fixtureEvents } from "@aiden/fixtures"
+
+export const plannedWorkflowEventCount = fixtureEvents.length
 
 export const deriveRunProgress = (snapshot: RunSnapshot | null) => {
   if (!snapshot) return 0
-  const total = 14
+  const total = Math.max(plannedWorkflowEventCount, snapshot.events.length)
   return Math.min(100, Math.round((snapshot.events.length / total) * 100))
 }
 

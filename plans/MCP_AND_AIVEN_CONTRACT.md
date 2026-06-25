@@ -15,13 +15,15 @@ Current implementation truth:
 
 - the Agent SDK runtime receives the hosted Aiven MCP server directly through its `mcpServers`
   option;
+- the proof spine launches an Aiven Operator Agent probe and records `aiven.mcp.agent.probed`;
+- that event is `live/ok` only when the SDK stream observes an allowlisted `mcp__aiven__...` tool call;
 - `.mcp.json` remains as the raw descriptor for other MCP clients;
 - `.codex/config.toml` may exist for developer tooling, but it is not the product runtime gate;
 - the local API runtime currently executes live Aiven proof through direct Aiven REST/Postgres/Kafka
   fallback code;
 - receipt rows from that path are labeled `direct_aiven_fallback`;
 - the UI must not imply that direct fallback rows are live MCP tool calls;
-- a later real MCP action can replace the same receipt slots without changing the demo flow.
+- later MCP data-plane actions can replace the same fallback receipt slots without changing the demo flow.
 
 ## MCP Server Configuration
 
@@ -68,9 +70,9 @@ Keep the raw MCP server descriptor at the repo root too, for tools that expect J
 }
 ```
 
-The Agent SDK config is the primary product path. The current API runtime still uses direct Aiven
-fallback for live data-plane proof actions until real MCP write/read actions are added to the local
-worker.
+The Agent SDK config is the primary product control-plane path. The current API runtime still uses
+direct Aiven fallback for live data-plane proof actions until real MCP write/read actions are added to
+the local worker.
 
 Security rule:
 

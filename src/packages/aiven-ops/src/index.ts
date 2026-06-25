@@ -18,6 +18,9 @@ import { appEvents as fixtureAppEvents, posts as fixturePosts, receipts as fixtu
 import { Kafka, logLevel } from "kafkajs"
 import pg from "pg"
 
+export type { TargetConnectionResolution } from "./targetConnection"
+export { resolveAivenPostgresConnection } from "./targetConnection"
+
 const { Client } = pg
 
 type ProofStatus = "passed" | "failed" | "skipped"
@@ -47,6 +50,32 @@ type DataMigrationAccumulator = ProofAccumulator & {
   rowValidations: RowValidation[]
 }
 
+type AivenServiceShape = {
+  service_name?: string
+  service_type?: string
+  state?: string
+  cloud_name?: string
+  plan?: string
+  service_uri?: string
+  service_uri_params?: Record<string, unknown>
+}
+
+type AivenServiceResponse = {
+  service?: AivenServiceShape
+}
+
+type FreshAivenTarget = {
+  runId: string
+  project: string
+  postgres: {
+    serviceName: string
+    cloud: string
+    plan: string
+    serviceUri: string
+  }
+  createdAt: string
+}
+
 const now = () => new Date().toISOString()
 
 const expectedRowCounts: Record<string, number> = {
@@ -61,6 +90,186 @@ const dataMigrationLockKey = "aiden_sunstead_data_migration"
 const readEnv = (name: string) => {
   const value = process.env[name]?.trim()
   return value && value.length > 0 ? value : undefined
+}
+
+const readActivePostgresUrl = () => readEnv("AIDEN_FRESH_AIVEN_POSTGRES_URL") ?? readEnv("AIVEN_POSTGRES_URL")
+const readActivePgService = () => readEnv("AIDEN_FRESH_AIVEN_PG_SERVICE") ?? readEnv("AIVEN_PG_SERVICE")
+const readActiveKafkaBootstrap = () =>
+  readEnv("AIDEN_FRESH_AIVEN_KAFKA_BOOTSTRAP_SERVERS") ?? readEnv("AIVEN_KAFKA_BOOTSTRAP_SERVERS")
+const readActiveKafkaUsername = () => readEnv("AIDEN_FRESH_AIVEN_KAFKA_USERNAME") ?? readEnv("AIVEN_KAFKA_USERNAME")
+const readActiveKafkaPassword = () => readEnv("AIDEN_FRESH_AIVEN_KAFKA_PASSWORD") ?? readEnv("AIVEN_KAFKA_PASSWORD")
+const readActiveKafkaService = () => readEnv("AIDEN_FRESH_AIVEN_KAFKA_SERVICE") ?? readEnv("AIVEN_KAFKA_SERVICE")
+
+export const canProvisionFreshAivenTarget = () => Boolean(readEnv("AIVEN_TOKEN") && readEnv("AIVEN_PROJECT"))
+export const hasActiveAivenPostgresTarget = () => Boolean(readActivePostgresUrl())
+export const hasActiveAivenKafkaTarget = () =>
+  Boolean(readActiveKafkaBootstrap() && readActiveKafkaUsername() && readActiveKafkaPassword())
+export const getActiveAivenTargetSummary = () => ({
+  project: readEnv("AIDEN_FRESH_AIVEN_PROJECT") ?? readEnv("AIVEN_PROJECT") ?? null,
+  postgresService: readActivePgService() ?? null,
+  kafkaService: readActiveKafkaService() ?? null,
+  freshPostgresCreated: Boolean(readEnv("AIDEN_FRESH_AIVEN_POSTGRES_URL")),
+  existingTargetsAllowed: Boolean(readEnv("AIVEN_POSTGRES_URL"))
+})
+
+const freshTargets = new Map<string, FreshAivenTarget>()
+const freshTargetPromises = new Map<string, Promise<FreshAivenTarget>>()
+
+const readPositiveInt = (name: string, fallback: number) => {
+  const value = readEnv(name)
+  if (!value) return fallback
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const aivenApiBase = () => readEnv("AIVEN_API_BASE") ?? "https://api.aiven.io/v1"
+
+const extractAivenMessage = (body: unknown) => {
+  if (!body || typeof body !== "object") return undefined
+  const input = body as Record<string, unknown>
+  if (typeof input.message === "string") return input.message
+  if (typeof input.error === "string") return input.error
+  if (Array.isArray(input.errors)) return input.errors.map((item) => String(item)).join("; ")
+  return undefined
+}
+
+const aivenRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const token = readEnv("AIVEN_TOKEN")
+  if (!token) throw new Error("AIVEN_TOKEN is required to create fresh Aiven services.")
+
+  const headers = new Headers(init.headers)
+  headers.set("Authorization", `Bearer ${token}`)
+  if (init.body) headers.set("Content-Type", "application/json")
+
+  const response = await fetch(`${aivenApiBase()}${path}`, {
+    ...init,
+    headers
+  })
+  const text = await response.text()
+  const body = text ? (JSON.parse(text) as unknown) : undefined
+  if (!response.ok) {
+    const message = extractAivenMessage(body) ?? response.statusText
+    throw new Error(`Aiven API ${init.method ?? "GET"} ${path} failed with HTTP ${response.status}: ${message}`)
+  }
+  return body as T
+}
+
+const serviceFromResponse = (response: AivenServiceResponse | AivenServiceShape): AivenServiceShape =>
+  "service" in response && response.service ? response.service : (response as AivenServiceShape)
+
+const resolveAivenCloud = async (project: string) => {
+  const configured = readEnv("AIVEN_CLOUD")
+  if (configured) return configured
+
+  const response = await aivenRequest<{ project?: { default_cloud?: string }; default_cloud?: string }>(
+    `/project/${encodeURIComponent(project)}`
+  )
+  const defaultCloud = response.project?.default_cloud ?? response.default_cloud
+  if (!defaultCloud) {
+    throw new Error("AIVEN_CLOUD is required because the selected Aiven project did not expose a default cloud.")
+  }
+  return defaultCloud
+}
+
+const freshServiceName = (runId: string) => {
+  const suffix = runId
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-18)
+  return `aiden-pg-${suffix || randomUUID().slice(0, 8)}-${Date.now().toString(36).slice(-6)}`.slice(0, 63)
+}
+
+const extractServiceUri = (service: AivenServiceShape) => {
+  const uri = service.service_uri
+  if (uri && !uri.includes("[REDACTED]")) return uri
+  throw new Error("Fresh Aiven Postgres service is running, but the API response did not include an unredacted service_uri.")
+}
+
+const waitForServiceRunning = async (project: string, serviceName: string) => {
+  const timeoutMs = readPositiveInt("AIVEN_PROVISION_TIMEOUT_MS", 600_000)
+  const pollMs = readPositiveInt("AIVEN_PROVISION_POLL_MS", 15_000)
+  const startedAt = Date.now()
+  let latestState = "unknown"
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const response = await aivenRequest<AivenServiceResponse | AivenServiceShape>(
+      `/project/${encodeURIComponent(project)}/service/${encodeURIComponent(serviceName)}`
+    )
+    const service = serviceFromResponse(response)
+    latestState = service.state ?? latestState
+    if (latestState === "RUNNING") return service
+    if (latestState === "ERROR" || latestState === "POWEROFF_FAILED") {
+      throw new Error(`Fresh Aiven service ${serviceName} entered ${latestState}.`)
+    }
+    await sleep(pollMs)
+  }
+
+  throw new Error(`Timed out waiting for fresh Aiven service ${serviceName} to become RUNNING; latest state ${latestState}.`)
+}
+
+const setFreshTargetEnv = (target: FreshAivenTarget) => {
+  process.env.AIDEN_FRESH_AIVEN_PROJECT = target.project
+  process.env.AIDEN_FRESH_AIVEN_PG_SERVICE = target.postgres.serviceName
+  process.env.AIDEN_FRESH_AIVEN_POSTGRES_URL = target.postgres.serviceUri
+}
+
+const createFreshAivenTarget = async (runId: string): Promise<FreshAivenTarget> => {
+  const project = readEnv("AIVEN_PROJECT")
+  if (!project) throw new Error("AIVEN_PROJECT is required to create a fresh Aiven landing zone.")
+
+  const cloud = await resolveAivenCloud(project)
+  const plan = readEnv("AIVEN_PG_PLAN") ?? "free-1-5gb"
+  const serviceName = freshServiceName(runId)
+
+  await aivenRequest<AivenServiceResponse>(`/project/${encodeURIComponent(project)}/service`, {
+    method: "POST",
+    body: JSON.stringify({
+      cloud,
+      plan,
+      service_name: serviceName,
+      service_type: "pg",
+      termination_protection: false,
+      user_config: {
+        pg_version: "17"
+      }
+    })
+  })
+
+  const service = await waitForServiceRunning(project, serviceName)
+  const target: FreshAivenTarget = {
+    runId,
+    project,
+    postgres: {
+      serviceName,
+      cloud: service.cloud_name ?? cloud,
+      plan: service.plan ?? plan,
+      serviceUri: extractServiceUri(service)
+    },
+    createdAt: now()
+  }
+  freshTargets.set(runId, target)
+  setFreshTargetEnv(target)
+  return target
+}
+
+export const ensureFreshAivenTarget = async (runId: string) => {
+  const existing = freshTargets.get(runId)
+  if (existing) {
+    setFreshTargetEnv(existing)
+    return existing
+  }
+
+  const inFlight = freshTargetPromises.get(runId)
+  if (inFlight) return inFlight
+
+  const promise = createFreshAivenTarget(runId).finally(() => {
+    freshTargetPromises.delete(runId)
+  })
+  freshTargetPromises.set(runId, promise)
+  return promise
 }
 
 const maxCsvSources = 8
@@ -125,7 +334,10 @@ const safeError = (error: unknown) => {
   let message = error instanceof Error ? error.message : String(error)
   for (const name of [
     "AIVEN_TOKEN",
+    "AIDEN_FRESH_AIVEN_POSTGRES_URL",
     "AIVEN_POSTGRES_URL",
+    "AIDEN_FRESH_AIVEN_KAFKA_USERNAME",
+    "AIDEN_FRESH_AIVEN_KAFKA_PASSWORD",
     "AIVEN_KAFKA_USERNAME",
     "AIVEN_KAFKA_PASSWORD",
     "SOURCE_SUPABASE_DB_URL",
@@ -284,7 +496,7 @@ const timestampFromPg = (value: unknown) => {
 
 const createPgClient = () =>
   new Client({
-    connectionString: normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!),
+    connectionString: normalizePostgresConnectionString(readActivePostgresUrl()!),
     ssl:
       readEnv("AIVEN_POSTGRES_SSL") === "false"
         ? undefined
@@ -391,7 +603,7 @@ const verifyAivenProject = async (acc: ProofAccumulator) => {
     const serviceNames = services
       .map((service) => service.service_name)
       .filter((serviceName): serviceName is string => typeof serviceName === "string")
-    const expectedServices = [readEnv("AIVEN_PG_SERVICE"), readEnv("AIVEN_KAFKA_SERVICE")].filter(
+    const expectedServices = [readActivePgService(), readActiveKafkaService()].filter(
       (serviceName): serviceName is string => Boolean(serviceName)
     )
     const foundExpectedServices = expectedServices.filter((serviceName) => serviceNames.includes(serviceName))
@@ -458,7 +670,7 @@ const verifyAivenProject = async (acc: ProofAccumulator) => {
 }
 
 const verifyPostgres = async (acc: ProofAccumulator) => {
-  const required = missing(["AIVEN_POSTGRES_URL"])
+  const required = readActivePostgresUrl() ? [] : ["AIDEN_FRESH_AIVEN_POSTGRES_URL"]
   if (required.length > 0) {
     addMissingProof(acc, {
       missingEnv: required,
@@ -479,7 +691,7 @@ const verifyPostgres = async (acc: ProofAccumulator) => {
     return
   }
 
-  const connectionString = normalizePostgresConnectionString(readEnv("AIVEN_POSTGRES_URL")!)
+  const connectionString = normalizePostgresConnectionString(readActivePostgresUrl()!)
   const client = new Client({
     connectionString,
     ssl:
@@ -656,7 +868,11 @@ const verifyPostgres = async (acc: ProofAccumulator) => {
 }
 
 const verifyKafka = async (acc: ProofAccumulator) => {
-  const required = missing(["AIVEN_KAFKA_BOOTSTRAP_SERVERS", "AIVEN_KAFKA_USERNAME", "AIVEN_KAFKA_PASSWORD"])
+  const required = [
+    readActiveKafkaBootstrap() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_BOOTSTRAP_SERVERS",
+    readActiveKafkaUsername() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_USERNAME",
+    readActiveKafkaPassword() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_PASSWORD"
+  ].filter((name): name is string => Boolean(name))
   const topic = readEnv("AIVEN_KAFKA_TOPIC") ?? "migration.events"
   if (required.length > 0) {
     addMissingProof(acc, {
@@ -679,7 +895,7 @@ const verifyKafka = async (acc: ProofAccumulator) => {
     return
   }
 
-  const brokers = readEnv("AIVEN_KAFKA_BOOTSTRAP_SERVERS")!
+  const brokers = readActiveKafkaBootstrap()!
     .split(",")
     .map((broker) => broker.trim())
     .filter(Boolean)
@@ -690,8 +906,8 @@ const verifyKafka = async (acc: ProofAccumulator) => {
     ssl: readEnv("AIVEN_KAFKA_SSL") === "false" ? undefined : true,
     sasl: {
       mechanism: "plain",
-      username: readEnv("AIVEN_KAFKA_USERNAME")!,
-      password: readEnv("AIVEN_KAFKA_PASSWORD")!
+      username: readActiveKafkaUsername()!,
+      password: readActiveKafkaPassword()!
     },
     connectionTimeout: 6000,
     requestTimeout: 9000,
@@ -907,7 +1123,11 @@ export const runKafkaAgentBusProof = async (
   }
   const topic = readEnv("AIVEN_KAFKA_TOPIC") ?? "migration.events"
   const workflowEvents = inputWorkflowEvents.length > 0 ? inputWorkflowEvents : fallbackKafkaWorkflowEvents(runId)
-  const required = missing(["AIVEN_KAFKA_BOOTSTRAP_SERVERS", "AIVEN_KAFKA_USERNAME", "AIVEN_KAFKA_PASSWORD"])
+  const required = [
+    readActiveKafkaBootstrap() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_BOOTSTRAP_SERVERS",
+    readActiveKafkaUsername() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_USERNAME",
+    readActiveKafkaPassword() ? undefined : "AIDEN_FRESH_AIVEN_KAFKA_PASSWORD"
+  ].filter((name): name is string => Boolean(name))
 
   if (required.length > 0) {
     for (const name of required) acc.missingEnv.add(name)
@@ -966,7 +1186,7 @@ export const runKafkaAgentBusProof = async (
     }
   }
 
-  const brokers = readEnv("AIVEN_KAFKA_BOOTSTRAP_SERVERS")!
+  const brokers = readActiveKafkaBootstrap()!
     .split(",")
     .map((broker) => broker.trim())
     .filter(Boolean)
@@ -990,8 +1210,8 @@ export const runKafkaAgentBusProof = async (
     ssl: readEnv("AIVEN_KAFKA_SSL") === "false" ? undefined : true,
     sasl: {
       mechanism: "plain",
-      username: readEnv("AIVEN_KAFKA_USERNAME")!,
-      password: readEnv("AIVEN_KAFKA_PASSWORD")!
+      username: readActiveKafkaUsername()!,
+      password: readActiveKafkaPassword()!
     },
     connectionTimeout: 6000,
     requestTimeout: 9000,
@@ -1219,6 +1439,94 @@ export const runKafkaAgentBusProof = async (
   }
 }
 
+const provisionFreshTargetForProof = async (acc: ProofAccumulator) => {
+  const required = missing(["AIVEN_TOKEN", "AIVEN_PROJECT"])
+  if (required.length > 0) {
+    addMissingProof(acc, {
+      missingEnv: required,
+      eventType: "aiven.postgres.provisioned",
+      checkName: "fresh_aiven_postgres_service_created",
+      receiptTool: "aiven_service_create",
+      target: "fresh Aiven Postgres",
+      intent: "create fresh Aiven Postgres service for this migration run",
+      summary: "Fresh Aiven Postgres provisioning skipped"
+    })
+    return undefined
+  }
+
+  try {
+    const target = await ensureFreshAivenTarget(acc.runId)
+    addReceipt(acc, {
+      idPrefix: "receipt_fresh_pg_service",
+      intent: "create fresh Aiven Postgres service for this migration run",
+      tool: "aiven_service_create",
+      target: target.postgres.serviceName,
+      risk: "safe_write",
+      result: "ok",
+      rollback: "delete the run-scoped Aiven Postgres service after the demo if cleanup is requested",
+      source: "live",
+      details: {
+        project: target.project,
+        serviceName: target.postgres.serviceName,
+        cloud: target.postgres.cloud,
+        plan: target.postgres.plan,
+        fresh: true
+      }
+    })
+    addCheck(acc, {
+      idPrefix: "check_fresh_pg_service",
+      checkName: "fresh_aiven_postgres_service_created",
+      status: "passed",
+      source: "live",
+      details: {
+        project: target.project,
+        serviceName: target.postgres.serviceName,
+        cloud: target.postgres.cloud,
+        plan: target.postgres.plan
+      }
+    })
+    addEvent(acc, {
+      type: "aiven.postgres.provisioned",
+      status: "ok",
+      source: "live",
+      summary: `Created fresh Aiven Postgres service ${target.postgres.serviceName} for this migration run.`,
+      details: {
+        project: target.project,
+        serviceName: target.postgres.serviceName,
+        cloud: target.postgres.cloud,
+        plan: target.postgres.plan
+      }
+    })
+    return target
+  } catch (error) {
+    const message = safeError(error)
+    addReceipt(acc, {
+      idPrefix: "receipt_fresh_pg_service_failed",
+      intent: "create fresh Aiven Postgres service for this migration run",
+      tool: "aiven_service_create",
+      target: readEnv("AIVEN_PROJECT") ?? "Aiven project",
+      risk: "safe_write",
+      result: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    addCheck(acc, {
+      idPrefix: "check_fresh_pg_service_failed",
+      checkName: "fresh_aiven_postgres_service_created",
+      status: "failed",
+      source: "live",
+      details: { error: message }
+    })
+    addEvent(acc, {
+      type: "aiven.postgres.provisioned",
+      status: "failed",
+      source: "live",
+      summary: `Fresh Aiven Postgres provisioning failed: ${message}`
+    })
+    return undefined
+  }
+}
+
 export const runAivenProofSpine = async (runId: string): Promise<ProofSpineResult> => {
   const acc: ProofAccumulator = {
     runId,
@@ -1228,13 +1536,24 @@ export const runAivenProofSpine = async (runId: string): Promise<ProofSpineResul
     checks: []
   }
 
+  const target = await provisionFreshTargetForProof(acc)
+  if (!target && !hasActiveAivenPostgresTarget()) {
+    return {
+      source: sourceFrom(acc),
+      ok: false,
+      missingEnv: [...acc.missingEnv],
+      events: acc.events,
+      receipts: acc.receipts,
+      checks: acc.checks
+    }
+  }
   await verifyAivenProject(acc)
   await verifyPostgres(acc)
   await verifyKafka(acc)
 
   return {
     source: sourceFrom(acc),
-    ok: acc.checks.length > 0 && acc.checks.every((check) => check.status === "passed"),
+    ok: acc.checks.length > 0 && acc.checks.every((check) => check.status === "passed" || check.status === "skipped"),
     missingEnv: [...acc.missingEnv],
     events: acc.events,
     receipts: acc.receipts,
@@ -1593,7 +1912,10 @@ const runCsvSourceDataMigration = async (
     rowValidations: []
   }
 
-  const required = missing(["AIVEN_POSTGRES_URL"])
+  if (!readActivePostgresUrl()) {
+    await ensureFreshAivenTarget(runId).catch(() => undefined)
+  }
+  const required = readActivePostgresUrl() ? [] : ["AIDEN_FRESH_AIVEN_POSTGRES_URL"]
   if (configuredCsvSources.length === 0) required.push("CSV_SOURCE_FILES")
 
   if (required.length > 0) {
@@ -1981,7 +2303,10 @@ const runGenericSourceDataMigration = async (
     rowValidations: []
   }
 
-  const required = missing(["AIVEN_POSTGRES_URL"])
+  if (!readActivePostgresUrl()) {
+    await ensureFreshAivenTarget(runId).catch(() => undefined)
+  }
+  const required = readActivePostgresUrl() ? [] : ["AIDEN_FRESH_AIVEN_POSTGRES_URL"]
   const hasSourceUrl = Boolean(readEnv("SOURCE_SUPABASE_DB_URL") ?? readEnv("SOURCE_POSTGRES_URL"))
   if (!hasSourceUrl) required.push("SOURCE_SUPABASE_DB_URL")
   const tableRefs = sourceTableAllowlist()
@@ -2380,7 +2705,10 @@ export const runAivenDataMigration = async (
     rowValidations: []
   }
 
-  const required = missing(["AIVEN_POSTGRES_URL"])
+  if (!readActivePostgresUrl()) {
+    await ensureFreshAivenTarget(runId).catch(() => undefined)
+  }
+  const required = readActivePostgresUrl() ? [] : ["AIDEN_FRESH_AIVEN_POSTGRES_URL"]
   if (required.length > 0) {
     addMissingDataMigration(acc, required)
     return {

@@ -4,6 +4,7 @@ type PresenterControlsProps = {
   cutoverRunning: boolean
   disabled?: boolean
   eventCount: number
+  plannedEventCount: number
   kafkaRunning: boolean
   migrationRunning: boolean
   onRunKafka: () => void
@@ -22,6 +23,7 @@ export const PresenterControls = ({
   cutoverRunning,
   disabled = false,
   eventCount,
+  plannedEventCount,
   kafkaRunning,
   migrationRunning,
   onRunKafka,
@@ -38,7 +40,7 @@ export const PresenterControls = ({
   <aside className="presenter-controls" aria-label="Presenter controls">
     <div>
       <p className="eyebrow">Presenter controls</p>
-      <strong>{eventCount}/14 workflow events</strong>
+      <strong>{eventCount}/{plannedEventCount} workflow events</strong>
     </div>
     <div className="presenter-actions">
       <button className="primary-button" type="button" onClick={onRunProof} disabled={disabled || proofRunning}>

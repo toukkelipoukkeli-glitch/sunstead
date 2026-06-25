@@ -1,5 +1,6 @@
 import type { RunEvent } from "@aiden/contracts"
 import { Circle, CheckCircle2 } from "lucide-react"
+import { plannedWorkflowEventCount } from "../lib/deriveRunView"
 import { ModeBadge } from "./ModeBadge"
 
 const eventLabel = (type: string) => type.replaceAll("demo_runtime", "runtime")
@@ -11,7 +12,7 @@ export const AgentTimeline = ({ events }: { events: RunEvent[] }) => (
         <p className="eyebrow">Migration run</p>
         <h2>Agent timeline</h2>
       </div>
-      <span className="path-chip">{events.length}/14</span>
+      <span className="path-chip">{events.length}/{plannedWorkflowEventCount}</span>
     </div>
     <div className="timeline-list">
       {events.length === 0 ? (
@@ -31,7 +32,7 @@ export const AgentTimeline = ({ events }: { events: RunEvent[] }) => (
           </div>
         ))
       )}
-      {events.length < 14 ? (
+      {events.length < plannedWorkflowEventCount ? (
         <div className="timeline-item pending">
           <Circle aria-hidden="true" size={16} />
           <div>

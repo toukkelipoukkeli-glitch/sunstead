@@ -12,7 +12,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 | Shared contracts | Complete | Contracts package typechecks. |
 | Fixture data | Complete | Full cold-open -> report story exists. |
 | Local API | Complete | Fixture run player and adapter endpoints typecheck. |
-| Aiven proof spine | Live PG verified / direct fallback | `/api/runs/:runId/proof-spine` runs project visibility when configured, Postgres receipt readback, and Kafka agent-bus proof independently. Agent SDK owns the Aiven MCP control-plane context; data-plane proof uses labeled direct fallback where MCP write/read wrappers are not yet reliable. Missing env returns explicit cached/skipped proof without fixture leakage. |
+| Aiven proof spine | Live PG verified / MCP probe wired | `/api/runs/:runId/proof-spine` launches the Aiven Operator Agent MCP probe, runs project visibility when configured, Postgres receipt readback, and Kafka agent-bus proof independently. Agent SDK owns the Aiven MCP control-plane context; data-plane proof uses labeled direct fallback where MCP write/read wrappers are not yet reliable. Missing env returns explicit cached/skipped proof without fixture leakage. |
 | Aiven MCP config | Complete / Agent SDK runtime wired | Agent SDK receives the hosted Aiven MCP server directly through `mcpServers`; root `.mcp.json` keeps the raw server descriptor, and `.codex/config.toml` is developer tooling only. |
 | PulseWall scanner | M02 complete | Deterministic scanner reads `demo/pulsewall`, detects Supabase behavior, and replaces the behavior map through `/api/runs/:runId/source-scan`. |
 | Aiven Postgres data migration | M03 live PG verified | `/api/runs/:runId/data-migration` creates/loads/validates the scoped PulseWall dataset in Aiven Postgres. `npm run verify:live` passed row counts against live Aiven PG. |
@@ -21,9 +21,9 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 | Live Aiven verification | M05.5 live PG passed / Kafka env pending | `npm run verify:live` validates Agent SDK Aiven MCP runtime config, then drives M02/M01/M03/M05/M04 and adapter endpoint checks. Live Aiven Postgres path passes; Kafka remains warning-only until Kafka env is configured. |
 | Access Broker permission UX | M06A built / live PG verified | `AccessSnapshot`, `/api/runs/:runId/access-preflight`, Access Broker panel, primary-button gating, Kafka warning state, and production not-requested states are implemented. |
 | One-click agent runtime | M05.6 live PG verified | [`plans/one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) is implemented with a bounded orchestrator, typed agent-step registry, deterministic reasoner, and one-click verifier mode. |
-| Anthropic Agent SDK reasoner | M05.7 live verified | [`plans/anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) defines the bounded Aiven MCP Report/CTO Agent boundary. `npm run verify:live -- --one-click` passed with `agent sdk reasoner: Anthropic Agent SDK produced proof text`. |
+| Anthropic Agent SDK runtime | M05.7 live verified | [`plans/anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) defines the bounded Report/CTO Agent and Aiven Operator MCP probe boundary. `npm run verify:live -- --one-click` passed with `agent sdk reasoner: Anthropic Agent SDK produced proof text`; proof-spine now records `aiven.mcp.agent.probed`. |
 | Control room UI | M06 built / live PG verified | Stage-facing panels, Access Broker, one-click command strip, timeline state badges, realtime/Kafka proof distinction, validation pending states, and final readiness memo typecheck and build. |
-| Aiven workspace bootstrap | M06B built / live PG verified | Setup is now framed as connect/create Aiven workspace; the UI says Henri's pre-connected workspace powers the demo and Aiden can create a workspace during setup. |
+| Aiven workspace bootstrap | M06B built / fresh PG provisioning | Setup is now framed as connect Aiven account/project; the runtime creates a fresh Aiven Postgres service for each graduation run. |
 | Source intake setup | M06C built / live PG verified | [`plans/source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) defines and tracks the `/setup` product step for selecting source app, source data path, Aiven workspace mode, and migration scope before the control room. |
 | Rehearsal hardening | M07 built / live PG verified | `demo:preflight`, `demo:reset`, `demo:fallback`, and `demo:rehearse` exist. Two consecutive live one-click rehearsal runs passed and fallback artifacts are generated locally under ignored `artifacts/rehearsal/`. |
 | Verification | Complete for M06A/M06B/M06C/M05.6/M06/M07 live PG paths | `npm run typecheck`, Vite build, `npm run verify:live -- --one-click`, `npm run demo:preflight`, `npm run demo:fallback`, and `npm run demo:rehearse` passed. Kafka is skipped with warning because Kafka env vars are not configured. Browser screenshot/recording capture remains manual because no local browser binary is installed. |
@@ -49,7 +49,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] Cached proof is labeled as cached in the snapshot/UI contract.
 - [x] Fixture receipts/checks do not leak into cached/live proof-only runs.
 - [x] Configured expected Aiven services must be found for project/service verification to pass.
-- [x] Proof events replace matching fixture proof events so the presenter story remains a 14-event flow.
+- [x] Proof events replace matching fixture proof events so the presenter story remains the planned 15-event workflow.
 - [x] Control room has a visible `Run live proof` presenter action.
 - [x] Proof cards require `ok` events before showing Postgres ready; Kafka can remain waiting/warning when env is absent.
 - [ ] Live Aiven credentials configured and verified against real Aiven services.
@@ -73,10 +73,10 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] Aiven data migration runner can create scoped demo tables for `posts`, `reactions`, `demo_users`, and `app_events`.
 - [x] Runner builds a deterministic scoped dataset matching the visible validation contract: 40 posts, 120 reactions, 8 demo users, 2 app events.
 - [x] Runner writes migration receipts and validation checks when configured.
-- [x] Missing `AIVEN_POSTGRES_URL` produces cached/skipped schema, row validation, receipt, and smoke-query proof.
+- [x] Missing fresh Aiven target produces cached/skipped schema, row validation, receipt, and smoke-query proof.
 - [x] `POST /api/runs/:runId/data-migration` replaces `migration.schema.applied` and `migration.rows.validated` events.
 - [x] Control room has a visible `Migrate data` presenter action.
-- [x] Full presenter-path M03 smoke keeps the run at 14 events while replacing data-migration events.
+- [x] Full presenter-path M03 smoke keeps the run at the planned workflow event count while replacing data-migration events.
 - [x] Live Aiven Postgres credentials configured and verified with real table creation/load/counts.
 
 ## Mission 04 Acceptance
@@ -95,11 +95,11 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] Adapter routes can switch between fixture provider and Aiven provider.
 - [x] `GET /api/adapter/status` reports current adapter mode.
 - [x] `POST /api/runs/:runId/provider-cutover` tests Aiven-backed post reads, reaction writes, and `app_events` readback before switching the adapter.
-- [x] Missing `AIVEN_POSTGRES_URL` emits cached/skipped realtime and cutover proof.
+- [x] Missing fresh Aiven target emits cached/skipped realtime and cutover proof.
 - [x] Missing-env cutover keeps adapter routes on fixture mode.
 - [x] Control room has a visible `Cutover app` presenter action.
 - [x] Source app panel changes copy/chip after successful cutover so the scoped runtime path is visible.
-- [x] Full presenter-path M05 smoke keeps the run at 14 events while replacing cutover/realtime events.
+- [x] Full presenter-path M05 smoke keeps the run at the planned workflow event count while replacing cutover/realtime events.
 - [x] Live Aiven Postgres credentials configured and verified with real provider read/write/event polling.
 
 ## Mission 05.5 Acceptance
@@ -108,13 +108,13 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] Verifier checks Agent SDK Aiven MCP runtime configuration.
 - [x] Verifier checks root `.mcp.json` for the raw Aiven MCP descriptor.
 - [x] Codex MCP config is treated as optional developer tooling, not a runtime gate.
-- [x] Missing `AIVEN_POSTGRES_URL` fails fast with a clear message and no secret output.
+- [x] Missing `AIVEN_TOKEN`/`AIVEN_PROJECT` fails fast with a clear message and no secret output.
 - [x] Verifier sequence covers source scan, proof spine, data migration, provider cutover, Kafka agent bus, adapter reads/writes/events, and final report.
 - [x] Verifier treats Aiven Postgres migration and cutover as hard live gates.
 - [x] Verifier treats Kafka as warning-only when Kafka env is missing and required when Kafka env is configured or `--require-kafka` is used.
 - [x] `npm run typecheck` passes after verifier implementation.
 - [x] `npm exec --workspace @aiden/control-room vite -- build` passes after verifier implementation.
-- [x] `AIVEN_POSTGRES_URL` configured and full live M05.5 Postgres/cutover gate passed.
+- [x] Fresh Aiven Postgres provisioning and full live M05.5 Postgres/cutover gate are the required path.
 - [ ] Live Kafka credentials configured and full Kafka agent-bus gate passed, if Kafka is available for the final demo.
 
 ## Mission 06A Acceptance
@@ -149,7 +149,8 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] Focused mission spec exists at `plans/anthropic-agent-sdk-reasoner/README.md`.
 - [x] `@anthropic-ai/claude-agent-sdk` is installed and imported by the API reasoner path.
 - [x] Anthropic reasoner is text/report-only behind the existing `AgentReasoner` interface.
-- [x] Agent SDK path disables built-in tools, MCP config, local settings sources, and multi-turn tool loops.
+- [x] Agent SDK path disables built-in tools and local settings sources while using only the direct allowlisted Aiven MCP config.
+- [x] Proof spine records `aiven.mcp.agent.probed` and marks it live only after observing an Aiven MCP tool call.
 - [x] Deterministic reasoner remains the fallback.
 - [x] `npm run typecheck` passes after SDK integration.
 - [x] `npm run verify:live -- --one-click` passes with `reasoner: "anthropic_agent_sdk"` or safe fallback metadata.
@@ -173,8 +174,8 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 
 - [x] Focused mission spec exists at `plans/aiven-workspace-bootstrap/README.md`.
 - [x] First-screen copy frames setup as Aiven workspace connect/create, not credential collection.
-- [x] UI says the demo uses Henri's pre-connected Aiven workspace.
-- [x] UI says Aiden can create a workspace during setup if the user has no Aiven account.
+- [x] UI says Aiden creates a fresh Aiven Postgres service for each graduation run.
+- [x] UI treats Aiven account/project access as the setup requirement, not pre-created services.
 - [x] Raw credentials remain in ignored local env/MCP config only; no secrets are committed, printed, or exposed.
 - [x] Existing `AccessSnapshot` and `Graduate To Aiven` gates remain unchanged under the hood.
 - [x] `npm run verify:live -- --one-click` still passes after copy/UI changes.
@@ -185,7 +186,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - [x] `/setup` exists and is the default entry surface.
 - [x] Setup screen has visible source app choices: PulseWall demo app, GitHub repo, Lovable export.
 - [x] Setup screen has visible source data choices: seeded demo data, Supabase DB URL/read-only access, CSV/Lovable Cloud export.
-- [x] Setup screen has visible Aiven workspace choices: Henri pre-connected workspace, connect existing workspace, create new workspace.
+- [x] Setup screen has visible Aiven workspace choices: create fresh landing zone, legacy existing-service path disabled by default, create account later.
 - [x] Setup screen confirms scope: shadow migration, scoped demo cutover, production cutover not requested.
 - [x] Product paths not implemented for the hackathon are visible and honestly labeled.
 - [x] `Continue to Control Room` opens the existing `/control` flow.
@@ -215,7 +216,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Moved scaffold implementation source under root `src/`.
 - Verified `npm run dev` boots API on `:8787` and control room on `:5173` when those ports are free.
 - Verified `/api/health`, `/api/runs`, `/api/runs/:runId/graduate`, `/api/posts`, `/api/reactions`, `/api/events/recent`, and `/api/runs/:runId/report`.
-- Fixture playback reaches `report_ready` with 14 events.
+- Fixture playback reaches `report_ready` with 15 planned workflow events.
 - Tried Playwright screenshot; canceled browser download because it was too slow. Manual browser QA remains.
 - Brought stub UI in line with `plans/UI_DECISION_PACKAGE.md`: command strip, proof lanes, outcome rail, proof source badges, validation cards, and presenter controls.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
@@ -225,7 +226,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Added `POST /api/runs/:runId/proof-spine`.
 - Added control-room `Run live proof` action to presenter controls.
 - Verified missing-env M01 route returns cached/skipped proof instead of fake live success.
-- Verified full presenter path remains 14 events after running M01 proof.
+- Verified full presenter path remains at the planned workflow event count after running M01 proof.
 - Ran `npm run typecheck`; all workspaces passed.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
 - Upgraded the visual shell toward the full UI vision: operational palette, stronger cold-open path summary, real PulseWall image preview, sharper Aiven landing-zone panel, and more polished proof/report card hierarchy.
@@ -241,7 +242,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Re-ran `npm run typecheck`; all workspaces passed.
 - Re-ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
 - Re-ran API smoke on `:8877`: missing-env M01 proof returned `mode: cached`, 5 cached proof events, 3 cached receipts, 3 cached checks, and zero fixture row validations.
-- Re-ran fixture-flow smoke on `:8877`: full fixture run reached `report_ready` with 14 events, 10 fixture receipts, and 7 fixture checks.
+- Re-ran fixture-flow smoke on `:8877`: full fixture run reached `report_ready` with 15 planned workflow events, 10 fixture receipts, and 7 fixture checks.
 - Started Mission 02 PulseWall scanner + behavior graph.
 - Added deterministic scanner in `@aiden/migration-core` for Supabase client calls and SQL migration markers.
 - Added behavior scan result contract and live behavior findings for tables, realtime, auth, storage, RLS, edge function, RPC, and pgvector.
@@ -251,7 +252,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - API scanner smoke returned 3 live scan events and 8 live behavior findings with source refs.
 - Ran `npm run typecheck`; all workspaces passed.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
-- Full presenter-path scanner smoke kept the run at 14 events while replacing scan events with `source: live` and 8 live behavior findings.
+- Full presenter-path scanner smoke kept the run at the planned workflow event count while replacing scan events with `source: live` and 8 live behavior findings.
 - Fixed M02 review issues: one-click graduation now runs or preserves live source-scan output, manual scan no longer freezes fixture playback, scan-only calls finish as a completed operation, and scan summaries list the actual detected behaviors.
 - Added a code TODO for the nuanced mixed-evidence label decision: behavior rows/events keep their own source labels for now; top-level run mode remains an overall proof-mode label until we choose the UX.
 - Re-ran `npm run typecheck`; all workspaces passed.
@@ -265,7 +266,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Missing-env M03 smoke returned `mode: cached`, 2 cached migration events, 4 cached row validations, cached row-count/smoke checks, and cached Postgres receipts.
 - Ran `npm run typecheck`; all workspaces passed.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
-- Full presenter-path M03 smoke kept the run at 14 events while replacing data-migration events and row validations with cached/skipped proof.
+- Full presenter-path M03 smoke kept the run at the planned workflow event count while replacing data-migration events and row validations with cached/skipped proof.
 - Started Mission 05 provider cutover + Postgres events.
 - Added Aiven-backed PulseWall provider in `@aiden/pulsewall-adapter` for `posts`, `leaderboard`, `reactions`, and `app_events`.
 - Added adapter runtime switching in the API so browser routes stay stable while the server-side provider changes.
@@ -275,7 +276,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Missing-env M05 smoke returned `mode: cached`, 2 cached cutover/realtime events, 2 cached checks, 2 cached receipts, and adapter mode `fixture`.
 - Ran `npm run typecheck`; all workspaces passed.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
-- Full presenter-path M05 smoke kept the run at 14 events while replacing realtime/cutover events with cached/skipped proof and leaving adapter mode `fixture`.
+- Full presenter-path M05 smoke kept the run at the planned workflow event count while replacing realtime/cutover events with cached/skipped proof and leaving adapter mode `fixture`.
 - Defined Mission 05.5 live Aiven verification gate in `plans/live-aiven-verification-gate/README.md` and linked it from the critical path/spec stack.
 - Added root `.mcp.json` for hosted Aiven MCP and updated MCP/live-verification docs to treat it as the primary control-plane configuration while keeping secret redaction mandatory.
 - Added project-scoped `.codex/config.toml` with `[mcp_servers.aiven]` so Codex CLI/IDE can initialize the hosted Aiven MCP server for this trusted repo.
@@ -285,7 +286,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Added control-room `Kafka bus` presenter action and switched the Kafka panel to the dedicated bus stream.
 - Ran `npm run typecheck`; all workspaces passed.
 - Ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
-- Ran M04 API smoke on `:8877`: full fixture flow stayed at 14 timeline events, `/kafka-agent-bus` returned 10 cached/skipped Kafka bus events, and Kafka receipts used produce/consume tools.
+- Ran M04 API smoke on `:8877`: full fixture flow stayed at the planned workflow event count, `/kafka-agent-bus` returned 10 cached/skipped Kafka bus events, and Kafka receipts used produce/consume tools.
 - Started Mission 05.5 live Aiven verification gate implementation.
 - Added `scripts/verify-live-aiven.mjs` and root `npm run verify:live`.
 - Verifier validates Agent SDK Aiven MCP runtime config and `.mcp.json` before live proof.
@@ -329,6 +330,7 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Re-ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
 - Re-ran `API_BASE_URL=http://127.0.0.1:8787 npm run verify:live -- --one-click`; live Postgres one-click path passed, Anthropic Agent SDK produced proof text, and Kafka remained warning-only.
 - Re-ran `API_BASE_URL=http://127.0.0.1:8787 npm run verify:live`; separate-step live gate passed with Kafka warning-only.
+- Superseded the pre-connected workspace path: current runtime creates a fresh Aiven Postgres service per graduation run using `AIVEN_TOKEN`/`AIVEN_PROJECT`, and old `AIVEN_POSTGRES_URL` target reuse is no longer part of the default product path.
 - Defined Mission 06B Aiven Workspace Bootstrap in `plans/aiven-workspace-bootstrap/README.md` and linked it into the critical path, plan index, spec stack, and tracker. The product story is connect/create Aiven workspace; the demo uses Henri's pre-connected workspace without committing raw credentials.
 - Implemented Mission 06B copy: first-screen setup is now Aiven Workspace Setup, the command path shows Henri demo workspace, the cold open says Aiden can create a workspace during setup, and backend access proofs use workspace-first labels.
 - Re-ran `npm run typecheck`; all workspaces passed.
@@ -348,3 +350,5 @@ Current phase: final manual capture and pitch rehearsal from `/setup` through `/
 - Re-ran `npm run typecheck`; all workspaces passed.
 - Re-ran `npm exec --workspace @aiden/control-room vite -- build`; build passed.
 - Re-ran `npm run verify:live -- --one-click`; live Aiven Postgres one-click path passed, Anthropic Agent SDK produced proof text, and Kafka remained warning-only.
+- Added the Aiven Operator Agent MCP probe to proof-spine startup. It launches through Anthropic Agent SDK when `ANTHROPIC_API_KEY` is present, receives direct Aiven MCP config, permits only allowlisted read-only Aiven MCP tools, and records `aiven.mcp.agent.probed`.
+- Updated the control-room event count to derive from fixture events instead of a hardcoded value.

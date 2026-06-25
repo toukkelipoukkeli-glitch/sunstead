@@ -258,8 +258,9 @@ Output:
 ## MCP Usage Plan
 
 Aiven MCP should be the visible control plane when it is available and reliable. Current implementation
-uses direct Aiven fallback for live API proof and labels those rows as fallback; a real MCP action can
-replace the same receipt slot later.
+launches a read-only Aiven Operator MCP probe through the Agent SDK, while direct Aiven fallback still
+handles live data-plane proof and labels those rows as fallback. Later MCP read/write wrappers can
+replace the same data-plane receipt slots.
 
 Preferred live MCP actions:
 

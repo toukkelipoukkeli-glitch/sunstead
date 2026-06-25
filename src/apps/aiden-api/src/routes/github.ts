@@ -109,7 +109,7 @@ const positiveInteger = (value: unknown, label: string, required = true) => {
 const githubSetupProfileFor = (input: Awaited<ReturnType<typeof materializeGitHubSource>>): SetupProfile => ({
   sourceKind: "github_repo",
   sourceDataPath: "supabase_db_url",
-  aivenWorkspaceMode: "henri_preconnected",
+  aivenWorkspaceMode: "create_new",
   migrationScope: {
     shadowMigration: true,
     scopedDemoCutover: true,
@@ -118,7 +118,7 @@ const githubSetupProfileFor = (input: Awaited<ReturnType<typeof materializeGitHu
     storageMigration: "adapter_required"
   },
   sourceLabel: input.github.fullName,
-  workspaceLabel: "Henri pre-connected workspace",
+  workspaceLabel: "Fresh Aiven landing zone",
   sourceRoot: input.displayPath,
   github: input.github,
   detectedBehaviors: ["GitHub source import", "Supabase client scan pending"]

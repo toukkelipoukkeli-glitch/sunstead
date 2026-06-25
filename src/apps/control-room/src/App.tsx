@@ -6,7 +6,8 @@ export const App = () => {
   const path = window.location.pathname
 
   if (path === "/control") return <ControlRoom />
-  if (path === "/home") return <SalesHomePage />
+  if (path === "/setup" || path.startsWith("/setup/")) return <SetupPage />
+  if (path === "/" || path === "/home") return <SalesHomePage />
 
-  return <SetupPage />
+  return <SalesHomePage />
 }

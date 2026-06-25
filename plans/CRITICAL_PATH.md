@@ -51,7 +51,7 @@ Before starting implementation, read these in order. This file owns the mission 
 10. [`VERIFICATION_RUNBOOK.md`](VERIFICATION_RUNBOOK.md) — preflight gates, rehearsal path, failure fallbacks, and stage runbook.
 11. [`live-aiven-verification-gate/README.md`](live-aiven-verification-gate/README.md) — focused M05.5 spec for proving M01, M03, and M05 against live Aiven before more polish.
 12. [`access-broker-permission-ux/README.md`](access-broker-permission-ux/README.md) — product spec for access rights, permission preflight, and the visible setup step before one-click migration.
-13. [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md) — M06B spec for "connect or create Aiven workspace" product framing and demo-safe hardwiring to Henri's workspace.
+13. [`aiven-workspace-bootstrap/README.md`](aiven-workspace-bootstrap/README.md) — M06B spec for "connect Aiven account/project, then create fresh services" product framing.
 14. [`source-intake-workspace-setup/README.md`](source-intake-workspace-setup/README.md) — M06C spec for source selection, source data path, workspace selection, and scope confirmation before the control room.
 15. [`one-click-agent-runtime/README.md`](one-click-agent-runtime/README.md) — M05.6 spec for the bounded one-click agent orchestrator and optional Anthropic reasoner.
 16. [`anthropic-agent-sdk-reasoner/README.md`](anthropic-agent-sdk-reasoner/README.md) — M05.7 spec for Anthropic Agent SDK as the bounded Aiven MCP Report/CTO Agent.
@@ -224,7 +224,7 @@ visible product action match the one-click demo promise. Mission 06A turns the a
 inquiry into a visible product preflight before broad UI polish. Mission 06B upgrades that story
 from credential/access language into Aiven workspace onboarding: connect an existing Aiven account
 or let Aiden create a workspace if none exists. Mission 06C adds the missing source-intake product
-step so PulseWall and Henri's workspace are selected demo profile choices, not invisible hardcoding.
+step so PulseWall and fresh Aiven landing-zone creation are selected demo profile choices, not invisible hardcoding.
 Kafka live proof can remain warning-only unless credentials are available quickly.
 
 ## Mission 00: Fixture-Backed Demo Shell
@@ -560,7 +560,7 @@ Build:
 - define a typed agent-step registry around existing scanner/Aiven/migration/cutover/Kafka functions;
 - make `POST /api/runs/:runId/graduate` call the orchestrator;
 - keep individual proof routes as presenter/debug fallback controls;
-- keep Anthropic/LLM reasoning optional and bounded to summaries/report text only;
+- keep Anthropic/LLM report reasoning optional and text-only, while allowing the Aiven Operator Agent one bounded read-only MCP control-plane probe;
 - add `npm run verify:live -- --one-click`.
 
 Acceptance:
@@ -579,7 +579,7 @@ Kill/fallback:
 - If Anthropic integration slows work, cut it and keep deterministic agent steps.
 - If Kafka remains unavailable, keep it cached/skipped and protect the live Postgres cutover proof.
 
-## Mission 05.7: Anthropic Agent SDK Report Reasoner
+## Mission 05.7: Anthropic Agent SDK Report Reasoner And Aiven Operator Probe
 
 Status: LIVE VERIFIED
 Gap T: 6
@@ -590,9 +590,9 @@ Depends on: Mission 05.6 one-click runtime
 
 Target:
 
-Use Anthropic Agent SDK for the bounded Report/CTO Agent and Aiven control-plane context. Give it
-direct access to the Aiven MCP server, not Codex project settings, while keeping shell/file/web tools
-disabled.
+Use Anthropic Agent SDK for the bounded Report/CTO Agent and the Aiven Operator control-plane probe.
+Give the SDK direct access to the Aiven MCP server, not Codex project settings, while keeping
+shell/file/web tools disabled.
 
 Detailed spec:
 
@@ -602,6 +602,7 @@ Build:
 
 - install `@anthropic-ai/claude-agent-sdk`;
 - implement an SDK-backed `AgentReasoner`;
+- implement an SDK-backed Aiven Operator probe that records `aiven.mcp.agent.probed`;
 - restrict SDK execution to bounded turns with no built-in shell/file/web tools, no local settings sources, and only allowlisted Aiven MCP tools;
 - keep deterministic fallback;
 - store reasoner metadata in `proof.package.generated.details`;
@@ -611,6 +612,7 @@ Acceptance:
 
 - `npm run typecheck` passes;
 - `npm run verify:live -- --one-click` passes and reports `agent sdk reasoner: Anthropic Agent SDK produced proof text`;
+- proof spine records `aiven.mcp.agent.probed` and marks it `live/ok` only when an Aiven MCP tool call is observed;
 - deterministic fallback still completes the run if the SDK fails;
 - no secrets are exposed to the browser, terminal, docs, or committed files.
 
@@ -682,18 +684,18 @@ Detailed spec:
 
 Demo truth:
 
-- The hackathon demo uses Henri's pre-connected Aiven workspace.
-- The workspace is wired through local `.env.local` values and Aiven MCP OAuth.
-- The UI may hardcode a safe workspace label such as `Henri demo workspace`.
+- The hackathon demo connects to an Aiven account/project and creates a fresh Aiven Postgres service for each graduation run.
+- The account/project permission is wired through local `.env.local` values and Aiven MCP/OAuth where available.
+- The UI should label the target as a fresh Aiven landing zone, not as a pre-created service.
 - The repo must never hardcode raw credentials, tokens, passwords, connection strings, or Kafka secrets.
 
 Build:
 
 - update first-screen copy from access/credential-first language to Aiven workspace language;
 - keep the existing `AccessSnapshot` and permission gates under the hood;
-- show `Aiven workspace: connected` and `Aiven account: connected`;
-- include a line such as `No Aiven account? Aiden can create a workspace during setup.`;
-- label the demo honestly as `pre-connected demo workspace`;
+- show `Aiven account: connected` and `Fresh Postgres target: created during graduation`;
+- include a line such as `Aiden creates a new Aiven Postgres service for each graduation run.`;
+- label the demo honestly as `fresh Aiven landing zone`;
 - preserve `Production cutover: not requested`;
 - do not implement real account creation before rehearsal.
 
@@ -703,14 +705,14 @@ Acceptance:
 - `/setup` makes the source app, source data path, Aiven workspace, and migration scope explicit
   before judges reach the control room;
 - the setup story is "connect or create Aiven workspace," not "paste credentials";
-- Henri's account is described as the pre-connected demo workspace;
+- the demo is described as fresh service provisioning inside a connected Aiven account/project;
 - no secret values appear in docs, UI, terminal output, screenshots, committed files, or examples;
 - `npm run verify:live -- --one-click` still passes after any copy/UI change.
 
 Kill/fallback:
 
 - If UI time is tight, update only the Access Broker heading/copy and presenter script.
-- If asked whether account creation is implemented, say the demo uses a pre-connected account and the product path is create/connect workspace.
+- If asked whether account creation is implemented, say the demo requires an authenticated Aiven account/project and creates fresh services there.
 - Do not build signup, billing, account provisioning, or new Aiven organization APIs during the hackathon.
 
 ## Mission 06C: Source Intake & Workspace Setup
@@ -725,7 +727,7 @@ Depends on: Missions 06B and 06
 Target:
 
 Add the product step before the control room: select the app source, source data path, Aiven
-workspace mode, and migration scope. PulseWall and Henri's pre-connected workspace should appear as
+workspace mode, and migration scope. PulseWall and fresh Aiven landing-zone creation should appear as
 selected demo profile choices, not hidden assumptions.
 
 Detailed spec:
@@ -737,7 +739,7 @@ Build:
 - add `/setup` as the default entry screen;
 - show source choices: PulseWall demo app, GitHub repo, Lovable export;
 - show source data choices: seeded demo data, Supabase DB URL/read-only access, CSV/Lovable Cloud export;
-- show Aiven workspace choices: Henri pre-connected workspace, connect existing workspace, create new workspace;
+- show Aiven workspace choices: create fresh landing zone, existing-service compatibility disabled by default, create account later;
 - show migration scope: shadow migration, scoped demo cutover, production cutover not requested;
 - click `Continue to Control Room` to enter `/control`;
 - keep GitHub/upload/Aiven account creation as visible product paths, not implemented paths;
@@ -746,7 +748,7 @@ Build:
 Acceptance:
 
 - `/setup` exists and is the default entry surface;
-- PulseWall/Henri workspace are visible selected demo choices;
+- PulseWall/fresh Aiven landing-zone creation are visible selected demo choices;
 - unimplemented product paths are visible and honestly labeled;
 - no secrets appear in UI or docs;
 - `npm run verify:live -- --one-click` still passes after the setup screen lands.

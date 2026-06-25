@@ -87,7 +87,7 @@ Fallback:
 
 Pass:
 
-- Agent SDK Aiven MCP config is present, and any direct Aiven fallback receipt is labeled;
+- Agent SDK Aiven MCP config is present, `aiven.mcp.agent.probed` is recorded, and any direct Aiven fallback receipt is labeled;
 - Postgres receipt write/read succeeds;
 - UI shows receipt stream.
 

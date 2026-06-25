@@ -152,7 +152,7 @@ SOURCE_SUPABASE_TABLES=
 SOURCE_SUPABASE_ANON_KEY=
 SOURCE_SUPABASE_SERVICE_ROLE_KEY=
 
-# Optional summaries/report text only
+# Optional Agent SDK report text and read-only Aiven MCP probe
 ANTHROPIC_API_KEY=
 AGENT_REASONER=off
 ANTHROPIC_MODEL=sonnet

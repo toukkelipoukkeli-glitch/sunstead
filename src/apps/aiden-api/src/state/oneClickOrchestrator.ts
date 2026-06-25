@@ -14,6 +14,7 @@ export type AgentStepName =
   | "compatibility_surgeon"
   | "validation_auditor"
   | "cutover_manager"
+  | "adapter_package_generator"
   | "report_agent"
   | "kafka_bus_operator"
 
@@ -68,6 +69,30 @@ export type AivenMcpRuntimeConfig = {
   serverName: "aiven"
   source: "env" | "default"
   safeLabel: string
+}
+
+export type AivenMcpOperatorProbeInput = {
+  runId: string
+  sourceLabel: string
+  workspaceLabel: string
+  project?: string
+  postgresService?: string
+  kafkaService?: string
+}
+
+export type AivenMcpOperatorProbeResult = {
+  ok: boolean
+  launched: boolean
+  source: ProofSource
+  summary: string
+  text?: string
+  reasoner: "anthropic_agent_sdk" | "deterministic"
+  requestedReasoner: "anthropic_agent_sdk"
+  model?: string
+  fallback: boolean
+  error?: string
+  observedToolUses: string[]
+  allowedTools: string[]
 }
 
 export const deterministicReasoner: AgentReasoner = {
@@ -220,6 +245,24 @@ const allowOnlyAivenMcpTools: CanUseTool = async (toolName, input) => {
   }
 }
 
+const observedToolUsesFrom = (message: unknown) => {
+  if (!message || typeof message !== "object") return []
+  const candidate = message as { type?: unknown; message?: { content?: unknown } }
+  if (candidate.type !== "assistant" || !Array.isArray(candidate.message?.content)) return []
+  return candidate.message.content.flatMap((block) => {
+    if (!block || typeof block !== "object") return []
+    const contentBlock = block as { type?: unknown; name?: unknown }
+    return contentBlock.type === "tool_use" && typeof contentBlock.name === "string" ? [contentBlock.name] : []
+  })
+}
+
+const sdkResultErrorSummary = (message: { subtype?: unknown; errors?: unknown }) => {
+  if (Array.isArray(message.errors) && message.errors.length > 0) {
+    return message.errors.map((error) => String(error)).join("; ")
+  }
+  return `SDK result subtype ${String(message.subtype ?? "unknown")}`
+}
+
 const agentSdkEnv = (apiKey: string): Record<string, string | undefined> => ({
   ANTHROPIC_API_KEY: apiKey,
   API_TIMEOUT_MS: "60000",
@@ -293,7 +336,7 @@ const requestAnthropicText = async (
         if (!result) throw new Error("Anthropic Agent SDK returned an empty result")
         return result
       }
-      throw new Error(`Anthropic Agent SDK failed: ${message.errors.join("; ")}`)
+      throw new Error(`Anthropic Agent SDK failed: ${sdkResultErrorSummary(message)}`)
     }
   } finally {
     clearTimeout(timeout)
@@ -322,6 +365,127 @@ const createAnthropicAgentSdkReasoner = (): AgentReasoner => ({
     )
   }
 })
+
+export const runAivenMcpOperatorProbe = async (
+  input: AivenMcpOperatorProbeInput
+): Promise<AivenMcpOperatorProbeResult> => {
+  const apiKey = readEnv("ANTHROPIC_API_KEY")
+  const model = readEnv("ANTHROPIC_MODEL") ?? "sonnet"
+  if (!apiKey) {
+    return {
+      ok: false,
+      launched: false,
+      source: "cached",
+      summary: "Aiven Operator Agent skipped because ANTHROPIC_API_KEY is not configured.",
+      reasoner: "deterministic",
+      requestedReasoner: "anthropic_agent_sdk",
+      fallback: true,
+      error: "ANTHROPIC_API_KEY is not configured",
+      observedToolUses: [],
+      allowedTools: aivenMcpAllowedTools
+    }
+  }
+
+  const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), 75_000)
+  const observedToolUses: string[] = []
+  const prompt = [
+    "You are Aiden's Aiven Operator Agent.",
+    "Use only the configured Aiven MCP server. Do not use shell, files, web, local settings, or non-Aiven MCP servers.",
+    "Make one safe read-only Aiven MCP inspection before answering. Prefer project/service listing or service metadata.",
+    "Do not retrieve, print, summarize, or expose secrets, connection strings, passwords, tokens, usernames, or certificates.",
+    "Return one concise sentence stating whether Aiven control-plane context was reachable.",
+    "",
+    "Safe run facts:",
+    JSON.stringify(
+      sanitizeReasonerInput({
+        runId: input.runId,
+        sourceLabel: input.sourceLabel,
+        workspaceLabel: input.workspaceLabel,
+        project: input.project,
+        postgresService: input.postgresService,
+        kafkaService: input.kafkaService,
+        allowedMcpTools: aivenMcpAllowedTools
+      }),
+      null,
+      2
+    )
+  ].join("\n")
+
+  try {
+    for await (const message of query({
+      prompt,
+      options: {
+        abortController,
+        allowedTools: aivenMcpAllowedTools,
+        canUseTool: allowOnlyAivenMcpTools,
+        disallowedTools: blockedLocalTools,
+        env: agentSdkEnv(apiKey),
+        maxBudgetUsd: 0.08,
+        maxTurns: 3,
+        mcpServers: buildAivenMcpServers(),
+        model,
+        pathToClaudeCodeExecutable: readClaudeExecutable(),
+        permissionMode: "dontAsk",
+        settingSources: [],
+        strictMcpConfig: true
+      }
+    })) {
+      observedToolUses.push(...observedToolUsesFrom(message))
+      if (message.type !== "result") continue
+      if (message.subtype === "success") {
+        const text = message.result.trim()
+        const usedAivenMcp = observedToolUses.some((toolName) => toolName.startsWith("mcp__aiven__"))
+        return {
+          ok: usedAivenMcp,
+          launched: true,
+          source: usedAivenMcp ? "live" : "cached",
+          summary: usedAivenMcp
+            ? "Aiven Operator Agent launched through Anthropic Agent SDK and inspected Aiven through MCP."
+            : "Aiven Operator Agent launched, but no Aiven MCP tool call was observed.",
+          text: text || undefined,
+          reasoner: "anthropic_agent_sdk",
+          requestedReasoner: "anthropic_agent_sdk",
+          model,
+          fallback: !usedAivenMcp,
+          observedToolUses,
+          allowedTools: aivenMcpAllowedTools
+        }
+      }
+      throw new Error(`Anthropic Agent SDK failed: ${sdkResultErrorSummary(message)}`)
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      launched: true,
+      source: "cached",
+      summary: "Aiven Operator Agent launched, but the Aiven MCP inspection was unavailable.",
+      reasoner: "deterministic",
+      requestedReasoner: "anthropic_agent_sdk",
+      model,
+      fallback: true,
+      error: safeReasonerError(error),
+      observedToolUses,
+      allowedTools: aivenMcpAllowedTools
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  return {
+    ok: false,
+    launched: true,
+    source: "cached",
+    summary: "Aiven Operator Agent launched, but the SDK did not return a result.",
+    reasoner: "deterministic",
+    requestedReasoner: "anthropic_agent_sdk",
+    model,
+    fallback: true,
+    error: "Anthropic Agent SDK did not return a result",
+    observedToolUses,
+    allowedTools: aivenMcpAllowedTools
+  }
+}
 
 export const selectAgentReasoner = (): AgentReasonerSelection => {
   const requested = process.env.AGENT_REASONER?.trim()

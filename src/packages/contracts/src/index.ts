@@ -26,6 +26,9 @@ export type AgentName =
   | "validation_auditor"
   | "cutover_manager"
   | "report_agent"
+  | "adapter_generator"
+  | "artifact_validator"
+  | "kafka_bus_operator"
 
 export type RunEvent = {
   runId: string
@@ -73,7 +76,6 @@ export type CsvSourceInput = {
 }
 
 export type AivenWorkspaceMode =
-  | "henri_preconnected"
   | "connect_existing"
   | "create_new"
 
@@ -152,6 +154,75 @@ export type BehaviorFinding = {
   source: ProofSource
 }
 
+export type BehaviorKind =
+  | "table"
+  | "index"
+  | "constraint"
+  | "view"
+  | "extension"
+  | "function"
+  | "trigger"
+  | "rls"
+  | "auth"
+  | "storage"
+  | "realtime"
+  | "rpc"
+  | "edge_function"
+  | "client_call"
+  | "env_var"
+  | "csv_export"
+
+export type BehaviorTarget =
+  | "aiven_postgres"
+  | "aiven_kafka"
+  | "generated_adapter"
+  | "human_review"
+  | "none"
+
+export type MigrationBlocker = {
+  id: string
+  severity: "info" | "warning" | "blocking"
+  behaviorNodeId?: string
+  title: string
+  detail: string
+  resolution: string
+  source: ProofSource
+}
+
+export type BehaviorNode = {
+  id: string
+  kind: BehaviorKind
+  name: string
+  detail: string
+  classification: BehaviorClassification
+  target: BehaviorTarget
+  dependsOn: string[]
+  evidence: SourceRef[]
+  source: ProofSource
+}
+
+export type BehaviorGraph = {
+  sourceLabel: string
+  sourceKind: SourceKind
+  framework: string[]
+  packageManagers: string[]
+  summary: {
+    tables: string[]
+    hasAuth: boolean
+    hasStorage: boolean
+    hasRealtime: boolean
+    hasRls: boolean
+    hasRpc: boolean
+    hasEdgeFunctions: boolean
+    hasVector: boolean
+  }
+  nodes: BehaviorNode[]
+  readinessScore: number
+  blockers: MigrationBlocker[]
+  source: ProofSource
+  createdAt: string
+}
+
 export type BehaviorScanResult = {
   sourceRoot: string
   sourceLabel: string
@@ -171,6 +242,77 @@ export type BehaviorScanResult = {
   }
   findings: BehaviorFinding[]
   source: ProofSource
+  createdAt: string
+}
+
+export type MigrationManifest = {
+  runId: string
+  source: SetupProfile
+  graph: BehaviorGraph
+  directMigrate: {
+    tables: string[]
+    indexes: string[]
+    extensions: string[]
+    functions: string[]
+    triggers: string[]
+  }
+  shadowCopy: {
+    mode: "pulsewall_schema" | "source_table_rows" | "csv_source_rows"
+    tables: string[]
+    copyLimit?: number
+  }
+  adapterRequired: {
+    auth: boolean
+    storage: boolean
+    rpc: string[]
+    edgeFunctions: string[]
+    clientTables: string[]
+  }
+  realtime: {
+    browserPath: "aiven_postgres_app_events"
+    kafkaPath: "optional_agent_bus" | "configured_agent_bus"
+    sourceTables: string[]
+  }
+  blockers: MigrationBlocker[]
+  validationPlan: Array<{
+    id: string
+    checkName: string
+    expected: string
+    source: ProofSource
+  }>
+  createdAt: string
+}
+
+export type GeneratedArtifact = {
+  id: string
+  runId: string
+  kind:
+    | "migration_manifest"
+    | "adapter_package"
+    | "env_example"
+    | "migration_notes"
+    | "github_pr"
+    | "schema_plan"
+    | "validation_report"
+  path?: string
+  title: string
+  status: "planned" | "generated" | "validated" | "failed" | "skipped"
+  source: ProofSource
+  details?: Record<string, unknown>
+  createdAt: string
+}
+
+export type CutoverArtifact = {
+  id: string
+  runId: string
+  type: "github_pr" | "local_patch" | "artifact_bundle"
+  status: "opened" | "generated" | "skipped" | "failed"
+  url?: string
+  branch?: string
+  files: string[]
+  proof: string
+  source: ProofSource
+  details?: Record<string, unknown>
   createdAt: string
 }
 
@@ -345,7 +487,11 @@ export type RunSnapshot = {
   accessSnapshot: AccessSnapshot
   events: RunEvent[]
   kafkaEvents: RunEvent[]
+  behaviorGraph?: BehaviorGraph
   behaviorFindings: BehaviorFinding[]
+  migrationManifest?: MigrationManifest
+  generatedArtifacts: GeneratedArtifact[]
+  cutoverArtifacts: CutoverArtifact[]
   receipts: AivenReceipt[]
   validationChecks: ValidationCheck[]
   report: Report

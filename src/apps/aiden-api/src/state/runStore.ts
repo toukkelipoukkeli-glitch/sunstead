@@ -3,7 +3,15 @@ import { randomUUID } from "node:crypto"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
+  generateAivenAdapterPackage,
+  validateGeneratedAdapterPackage
+} from "@aiden/adapter-generator"
+import {
+  canProvisionFreshAivenTarget,
+  getActiveAivenTargetSummary,
   getConfiguredCsvSourceSummary,
+  hasActiveAivenKafkaTarget,
+  hasActiveAivenPostgresTarget,
   runAivenDataMigration,
   runAivenProofSpine,
   runKafkaAgentBusProof
@@ -13,7 +21,11 @@ import type {
   AccessSnapshot,
   AivenReceipt,
   BehaviorFinding,
+  BehaviorGraph,
   BehaviorScanResult,
+  CutoverArtifact,
+  GeneratedArtifact,
+  MigrationManifest,
   ProofSource,
   RowValidation,
   RunEvent,
@@ -30,13 +42,20 @@ import {
   receipts,
   validationChecks
 } from "@aiden/fixtures"
-import { scanLovableSource } from "@aiden/migration-core"
+import {
+  behaviorFindingsFromGraph,
+  buildBehaviorGraph,
+  buildMigrationManifest,
+  scanLovableSource
+} from "@aiden/migration-core"
+import { openCutoverPullRequest } from "@aiden/github-source"
 import { createAivenPulseWallProvider } from "@aiden/pulsewall-adapter"
 import { canUseAivenProvider, switchToAivenProvider } from "./adapterRuntime.js"
 import {
   callAgentReasoner,
   readAivenMcpRuntimeConfig,
   readAgentRunMode,
+  runAivenMcpOperatorProbe,
   runAgentSteps,
   selectAgentReasoner,
   type AgentRunContext,
@@ -56,7 +75,11 @@ type RunRecord = {
   events: RunEvent[]
   kafkaEvents: RunEvent[]
   proofSource: ProofSource
+  behaviorGraph?: BehaviorGraph
   behaviorFindings: BehaviorFinding[]
+  migrationManifest?: MigrationManifest
+  generatedArtifacts: GeneratedArtifact[]
+  cutoverArtifacts: CutoverArtifact[]
   receipts: AivenReceipt[]
   validationChecks: ValidationCheck[]
   rowValidations: RowValidation[]
@@ -69,7 +92,7 @@ const listeners = new Map<string, Set<Listener>>()
 const defaultSetupProfile: SetupProfile = {
   sourceKind: "pulsewall_demo",
   sourceDataPath: "seeded_demo_data",
-  aivenWorkspaceMode: "henri_preconnected",
+  aivenWorkspaceMode: "create_new",
   migrationScope: {
     shadowMigration: true,
     scopedDemoCutover: true,
@@ -78,7 +101,7 @@ const defaultSetupProfile: SetupProfile = {
     storageMigration: "adapter_required"
   },
   sourceLabel: "PulseWall managed profile",
-  workspaceLabel: "Henri pre-connected workspace",
+  workspaceLabel: "Fresh Aiven landing zone",
   detectedBehaviors: ["Supabase client", "tables", "realtime", "auth", "storage", "RLS", "RPC/edge markers"]
 }
 
@@ -113,7 +136,6 @@ const sourceDataPaths = new Set<SetupProfile["sourceDataPath"]>([
   "csv_export"
 ])
 const workspaceModes = new Set<SetupProfile["aivenWorkspaceMode"]>([
-  "henri_preconnected",
   "connect_existing",
   "create_new"
 ])
@@ -294,11 +316,19 @@ const fixtureCheckTriggers: Record<string, string> = {
 const kafkaAgentBusEventTypes = new Set([
   "access.connected",
   "behavior.scan.completed",
+  "behavior.graph.generated",
+  "migration.manifest.generated",
+  "aiven.mcp.agent.probed",
   "aiven.project.detected",
   "aiven.postgres.verified",
   "aiven.kafka.verified",
   "migration.rows.validated",
   "realtime.postgres_events_bridge.passed",
+  "adapter.package.generated",
+  "adapter.package.validated",
+  "cutover.artifact.generated",
+  "cutover.pr.opened",
+  "cutover.pr.skipped",
   "kafka.agent_bus_roundtrip.passed",
   "cutover.demo_runtime.ready",
   "proof.package.generated"
@@ -427,6 +457,60 @@ const applySourceScan = async (record: RunRecord) => {
       throw new Error("CSV export files are not configured.")
     }
     const createdAt = now()
+    record.behaviorGraph = {
+      sourceLabel: record.setupProfile.sourceLabel,
+      sourceKind: record.setupProfile.sourceKind,
+      framework: [],
+      packageManagers: [],
+      summary: {
+        tables: csvSummary.tables,
+        hasAuth: false,
+        hasStorage: false,
+        hasRealtime: false,
+        hasRls: false,
+        hasRpc: false,
+        hasEdgeFunctions: false,
+        hasVector: false
+      },
+      nodes: [
+        ...csvSummary.tables.map((table) => ({
+          id: `csv_export:${table}`,
+          kind: "csv_export" as const,
+          name: table,
+          detail: `CSV table export ${table} is available for Aiven shadow row import.`,
+          classification: "direct_migrate" as const,
+          target: "aiven_postgres" as const,
+          dependsOn: [],
+          evidence: [{ file: "csv_export", line: 1, match: table }],
+          source: "live" as const
+        })),
+        {
+          id: "client_call:adapter_required",
+          kind: "client_call" as const,
+          name: "adapter_required",
+          detail: "CSV export contains rows but not source-code behavior or Supabase call sites.",
+          classification: "adapter_required" as const,
+          target: "generated_adapter" as const,
+          dependsOn: csvSummary.tables.map((table) => `csv_export:${table}`),
+          evidence: [{ file: "csv_export", line: 1, match: "headers only" }],
+          source: "live" as const
+        }
+      ],
+      readinessScore: 62,
+      blockers: [
+        {
+          id: "csv_source_code_required",
+          severity: "warning",
+          behaviorNodeId: "client_call:adapter_required",
+          title: "Source-code behavior unavailable",
+          detail: "CSV exports provide row data but not Supabase client behavior, Auth, Storage, RLS, or route call sites.",
+          resolution: "Connect a GitHub repo or Lovable export before claiming runtime adapter coverage.",
+          source: "live"
+        }
+      ],
+      source: "live",
+      createdAt
+    }
     record.behaviorFindings = [
       {
         id: "behavior_csv_tables",
@@ -488,6 +572,44 @@ const applySourceScan = async (record: RunRecord) => {
         createdAt
       }
     ])
+    record.migrationManifest = buildMigrationManifest({
+      runId: record.runId,
+      setupProfile: record.setupProfile,
+      graph: record.behaviorGraph,
+      sourceDataPath: record.setupProfile.sourceDataPath,
+      accessSnapshot: buildAccessSnapshot(record)
+    })
+    upsertEvents(record, [
+      {
+        runId: record.runId,
+        type: "behavior.graph.generated",
+        agent: "behavior_mapper",
+        state: "behavior_mapped",
+        status: "ok",
+        source: "live",
+        summary: `Behavior graph generated ${record.behaviorGraph.nodes.length} node(s) from CSV export evidence.`,
+        details: {
+          sourceLabel: record.setupProfile.sourceLabel,
+          nodeCount: record.behaviorGraph.nodes.length,
+          readinessScore: record.behaviorGraph.readinessScore
+        },
+        createdAt
+      },
+      {
+        runId: record.runId,
+        type: "migration.manifest.generated",
+        agent: "behavior_mapper",
+        state: "behavior_mapped",
+        status: "ok",
+        source: "live",
+        summary: "Migration manifest generated for CSV shadow row import and adapter blockers.",
+        details: {
+          shadowCopyMode: record.migrationManifest.shadowCopy.mode,
+          blockerCount: record.migrationManifest.blockers.length
+        },
+        createdAt
+      }
+    ])
     return undefined
   }
   if (!sourceRoot) {
@@ -497,8 +619,51 @@ const applySourceScan = async (record: RunRecord) => {
     sourceRoot,
     sourceLabel: record.setupProfile.sourceLabel
   })
-  record.behaviorFindings = scan.findings
+  const graph = buildBehaviorGraph(scan, record.setupProfile)
+  record.behaviorGraph = graph
+  record.behaviorFindings = behaviorFindingsFromGraph(graph)
+  record.migrationManifest = buildMigrationManifest({
+    runId: record.runId,
+    setupProfile: record.setupProfile,
+    graph,
+    sourceDataPath: record.setupProfile.sourceDataPath,
+    accessSnapshot: buildAccessSnapshot(record)
+  })
   upsertEvents(record, scanEventsFor(record.runId, scan))
+  upsertEvents(record, [
+    {
+      runId: record.runId,
+      type: "behavior.graph.generated",
+      agent: "behavior_mapper",
+      state: "behavior_mapped",
+      status: "ok",
+      source: "live",
+      summary: `Behavior graph generated ${graph.nodes.length} node(s) with ${graph.blockers.length} blocker(s).`,
+      details: {
+        sourceLabel: graph.sourceLabel,
+        nodeCount: graph.nodes.length,
+        blockerCount: graph.blockers.length,
+        readinessScore: graph.readinessScore
+      },
+      createdAt: graph.createdAt
+    },
+    {
+      runId: record.runId,
+      type: "migration.manifest.generated",
+      agent: "behavior_mapper",
+      state: "behavior_mapped",
+      status: "ok",
+      source: "live",
+      summary: `Migration manifest generated for ${record.migrationManifest.shadowCopy.mode}.`,
+      details: {
+        shadowCopyMode: record.migrationManifest.shadowCopy.mode,
+        directTables: record.migrationManifest.directMigrate.tables,
+        adapterRequired: record.migrationManifest.adapterRequired,
+        blockerCount: record.migrationManifest.blockers.length
+      },
+      createdAt: record.migrationManifest.createdAt
+    }
+  ])
   return scan
 }
 
@@ -514,6 +679,8 @@ const getRecord = (runId: string): RunRecord => {
     kafkaEvents: [],
     proofSource: "fixture",
     behaviorFindings: [],
+    generatedArtifacts: [],
+    cutoverArtifacts: [],
     receipts: [],
     validationChecks: [],
     rowValidations: []
@@ -540,7 +707,11 @@ export const createRun = (input?: { setupProfile?: Partial<SetupProfile> }) => {
   record.events = []
   record.kafkaEvents = []
   record.proofSource = "fixture"
+  record.behaviorGraph = undefined
   record.behaviorFindings = []
+  record.migrationManifest = undefined
+  record.generatedArtifacts = []
+  record.cutoverArtifacts = []
   record.receipts = []
   record.validationChecks = []
   record.rowValidations = []
@@ -559,12 +730,18 @@ export const startFixtureRun = async (runId: string) => {
       ["repo.scan.started", "source.behavior.detected", "behavior.scan.completed"].includes(event.type)
   )
   const existingBehaviorFindings = record.behaviorFindings
+  const existingBehaviorGraph = record.behaviorGraph
+  const existingMigrationManifest = record.migrationManifest
 
   record.status = "running"
   record.events = []
   record.kafkaEvents = []
   record.proofSource = "fixture"
+  record.behaviorGraph = existingBehaviorGraph
   record.behaviorFindings = existingBehaviorFindings
+  record.migrationManifest = existingMigrationManifest
+  record.generatedArtifacts = []
+  record.cutoverArtifacts = []
   record.receipts = []
   record.validationChecks = []
   record.rowValidations = []
@@ -639,7 +816,11 @@ export const resetRun = (runId: string) => {
   record.events = []
   record.kafkaEvents = []
   record.proofSource = "fixture"
+  record.behaviorGraph = undefined
   record.behaviorFindings = []
+  record.migrationManifest = undefined
+  record.generatedArtifacts = []
+  record.cutoverArtifacts = []
   record.receipts = []
   record.validationChecks = []
   record.rowValidations = []
@@ -674,6 +855,8 @@ const readEnv = (name: string) => {
 
 const safeError = (error: unknown) => {
   let message = error instanceof Error ? error.message : String(error)
+  const freshPostgresUrl = readEnv("AIDEN_FRESH_AIVEN_POSTGRES_URL")
+  if (freshPostgresUrl) message = message.split(freshPostgresUrl).join("[AIDEN_FRESH_AIVEN_POSTGRES_URL]")
   const postgresUrl = readEnv("AIVEN_POSTGRES_URL")
   if (postgresUrl) message = message.split(postgresUrl).join("[AIVEN_POSTGRES_URL]")
   return message.slice(0, 360)
@@ -720,7 +903,7 @@ const check = (
   createdAt: now()
 })
 
-const configuredEnv = (names: string[]) => names.every((name) => Boolean(readEnv(name)))
+const artifactId = (prefix: string) => `${prefix}_${randomUUID().slice(0, 8)}`
 
 const sourceDbConfigured = () => Boolean(readEnv("SOURCE_SUPABASE_DB_URL") ?? readEnv("SOURCE_POSTGRES_URL"))
 const sourceTablesConfigured = () => Boolean(readEnv("SOURCE_SUPABASE_TABLES") ?? readEnv("SOURCE_POSTGRES_TABLES"))
@@ -743,18 +926,20 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
   const rawMcpConfigured = existsSync(resolve(repoRoot, ".mcp.json"))
   const aivenMcpRuntime = readAivenMcpRuntimeConfig()
   const mcpConfigured = aivenMcpRuntime.enabled
+  const freshProvisioningConfigured = canProvisionFreshAivenTarget()
+  const activeTarget = getActiveAivenTargetSummary()
   const aivenProject = readEnv("AIVEN_PROJECT")
-  const aivenPostgresService = readEnv("AIVEN_PG_SERVICE")
-  const postgresConfigured = Boolean(readEnv("AIVEN_POSTGRES_URL"))
+  const aivenPostgresService = activeTarget.postgresService
+  const postgresConfigured = hasActiveAivenPostgresTarget()
+  const requestedFreshWorkspaceMode = record.setupProfile.aivenWorkspaceMode === "create_new"
+  const freshWorkspaceMode = requestedFreshWorkspaceMode && freshProvisioningConfigured && !postgresConfigured
+  const aivenAccountReady = freshWorkspaceMode ? freshProvisioningConfigured : mcpConfigured || postgresConfigured
+  const aivenProjectReady = freshWorkspaceMode ? freshProvisioningConfigured : Boolean(aivenProject) || postgresConfigured
   const seededDataPath = record.setupProfile.sourceDataPath === "seeded_demo_data"
   const demoAdapterSupported = isPulseWallDemoRuntimeProfile(record.setupProfile)
   const githubSource = record.setupProfile.sourceKind === "github_repo" ? record.setupProfile.github : undefined
   const genericSourceDataReady = !seededDataPath && sourceDbConfigured() && sourceTablesConfigured()
-  const kafkaConfigured = configuredEnv([
-    "AIVEN_KAFKA_BOOTSTRAP_SERVERS",
-    "AIVEN_KAFKA_USERNAME",
-    "AIVEN_KAFKA_PASSWORD"
-  ])
+  const kafkaConfigured = hasActiveAivenKafkaTarget()
   const livePostgresVerified =
     liveEventOk(record, "aiven.postgres.verified") ||
     liveEventOk(record, "migration.rows.validated") ||
@@ -833,20 +1018,27 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
     },
     {
       id: "aiven_mcp",
-      label: "Aiven workspace",
-      scope: "Account/workspace connection",
-      minimumPermission: "Agent SDK Aiven MCP endpoint",
-      status: mcpConfigured ? "connected" : "blocked",
-      source: "cached",
+      label: "Aiven account access",
+      scope: "Account/project permission",
+      minimumPermission: freshWorkspaceMode
+        ? "Aiven API token with service create/read"
+        : "Aiven MCP config or existing Aiven Postgres connection",
+      status: aivenAccountReady ? "connected" : "blocked",
+      source: freshProvisioningConfigured ? "live" : "cached",
       requiredForGraduate: true,
-      proof: mcpConfigured
-        ? `${record.setupProfile.workspaceLabel} has an Agent SDK Aiven MCP endpoint configured at ${aivenMcpRuntime.safeLabel}.`
-        : "Aiven MCP runtime endpoint is missing.",
+      proof: freshWorkspaceMode
+        ? freshProvisioningConfigured
+          ? `${record.setupProfile.workspaceLabel} can create fresh Aiven services in the selected project.`
+          : "AIVEN_TOKEN and AIVEN_PROJECT are required before Aiden can create the fresh Aiven landing zone."
+        : aivenAccountReady
+          ? `${record.setupProfile.workspaceLabel} can use the connected Aiven Postgres target for shadow migration.`
+          : "Connect an Aiven Postgres target or provide Aiven account access before graduation.",
       safeToShowDetails: {
         workspaceMode: record.setupProfile.aivenWorkspaceMode,
-        runtimeControlPlane: "anthropic_agent_sdk_aiven_mcp",
+        runtimeControlPlane: freshWorkspaceMode ? "aiven_rest_api_fresh_provisioning" : "existing_aiven_postgres_target",
         mcpServer: aivenMcpRuntime.serverName,
         mcpConfigSource: aivenMcpRuntime.source,
+        mcpEndpointConfigured: mcpConfigured,
         codexConfigPresentForDeveloperTools: codexMcpConfigured,
         rawDescriptorPresentForOtherClients: rawMcpConfigured
       }
@@ -854,36 +1046,44 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
     {
       id: "aiven_project",
       label: "Aiven project",
-      scope: "Project selected",
-      minimumPermission: "inspect selected services",
-      status: mcpConfigured || postgresConfigured ? "connected" : "blocked",
-      source: aivenProject || aivenPostgresService ? "live" : "cached",
+      scope: freshWorkspaceMode ? "Project selected for fresh service creation" : "Project or service selected for existing target",
+      minimumPermission: freshWorkspaceMode ? "create service in selected project" : "read/write selected Aiven Postgres target",
+      status: aivenProjectReady ? "connected" : "blocked",
+      source: freshProvisioningConfigured ? "live" : "cached",
       requiredForGraduate: true,
-      proof:
-        aivenProject || aivenPostgresService
-          ? "Target Aiven project/service metadata is configured."
-          : "Target service can be inferred only after an Aiven workspace is connected.",
+      proof: freshWorkspaceMode
+        ? freshProvisioningConfigured && aivenProject
+          ? "Aiven project is selected; Aiden will create a new target service during graduation."
+          : "AIVEN_PROJECT is missing."
+        : aivenProjectReady
+          ? `Existing Aiven target ${aivenPostgresService ?? "connection"} is selected for this run.`
+          : "Select an Aiven project/service or provide an Aiven Postgres URL.",
       safeToShowDetails: {
-        project: aivenProject ?? "configured through MCP",
-        postgresService: aivenPostgresService ?? "configured through connection"
+        project: aivenProject ?? null,
+        postgresService: aivenPostgresService ?? (freshWorkspaceMode ? "created during graduation" : "connection string target"),
+        freshPostgresCreated: activeTarget.freshPostgresCreated
       }
     },
     {
       id: "aiven_postgres",
-      label: "Target Postgres runtime",
-      scope: "Shadow schema write/read",
-      minimumPermission: "safe write/read on shadow tables",
-      status: postgresConfigured ? (livePostgresVerified ? "live_verified" : "ready") : "blocked",
-      source: livePostgresVerified ? "live" : postgresConfigured ? "cached" : "cached",
+      label: freshWorkspaceMode ? "Fresh Postgres runtime" : "Aiven Postgres runtime",
+      scope: freshWorkspaceMode ? "Create fresh service, then shadow schema write/read" : "Shadow schema write/read on connected target",
+      minimumPermission: freshWorkspaceMode ? "create service and safe write/read on shadow tables" : "safe write/read on shadow tables",
+      status: livePostgresVerified ? "live_verified" : postgresConfigured || freshProvisioningConfigured ? "ready" : "blocked",
+      source: livePostgresVerified ? "live" : "cached",
       requiredForGraduate: true,
       proof: postgresConfigured
         ? livePostgresVerified
-          ? "Live Aiven Postgres write/read proof has been observed in this run."
-          : "Aiven Postgres connection is configured; live write/read proof runs during migration."
-        : "Aiven Postgres connection is missing.",
+          ? `Aiven Postgres ${aivenPostgresService ?? "target"} was verified in this run.`
+          : `Aiven Postgres ${aivenPostgresService ?? "target"} is configured; live write/read proof runs during migration.`
+        : freshProvisioningConfigured
+          ? "Aiden will create a fresh Aiven Postgres service during graduation."
+          : "Aiven Postgres target access is missing.",
       safeToShowDetails: {
-        connectionConfigured: postgresConfigured,
-        liveProofObserved: livePostgresVerified
+        freshPostgresCreated: activeTarget.freshPostgresCreated,
+        serviceName: aivenPostgresService,
+        liveProofObserved: livePostgresVerified,
+        existingTargetsAllowed: activeTarget.existingTargetsAllowed
       }
     },
     {
@@ -898,11 +1098,12 @@ const buildAccessSnapshot = (record: RunRecord): AccessSnapshot => {
         ? liveKafkaVerified
           ? "Kafka migration.events roundtrip has been observed in this run."
           : "Kafka workspace path is configured; roundtrip proof can run as a sponsor-visible check."
-        : "Optional Kafka workspace path is not configured; cached agent-bus proof is allowed for the browser-safe demo path.",
+        : "Kafka is optional for this demo; browser-critical realtime uses Aiven Postgres app_events.",
       safeToShowDetails: {
         topic: "migration.events",
         configured: kafkaConfigured,
-        liveProofObserved: liveKafkaVerified
+        liveProofObserved: liveKafkaVerified,
+        existingTargetsAllowed: activeTarget.existingTargetsAllowed
       }
     },
     {
@@ -982,8 +1183,8 @@ const accessEventFor = (accessSnapshot: AccessSnapshot): RunEvent => {
     source,
     summary: accessSnapshot.canGraduate
       ? hasLivePostgresProof
-        ? "Aiven workspace setup verified source evidence, workspace context, and live Aiven Postgres shadow-write permissions."
-        : "Aiven workspace setup verified required configuration; live Aiven Postgres proof will run during migration."
+        ? "Aiven workspace setup verified source evidence and a fresh Aiven Postgres runtime created for this run."
+        : "Aiven workspace setup verified account/project access; fresh Aiven Postgres will be created during migration."
       : `Aiven workspace setup blocked graduation because required setup is missing: ${accessSnapshot.blockers.join(", ")}.`,
     details: {
       canGraduate: accessSnapshot.canGraduate,
@@ -1092,6 +1293,88 @@ const annotateAccessForOneClick = (
   return accessSnapshot
 }
 
+const runAivenMcpAgentProbe = async (record: RunRecord) => {
+  const activeTarget = getActiveAivenTargetSummary()
+  const result = await runAivenMcpOperatorProbe({
+    runId: record.runId,
+    sourceLabel: record.setupProfile.sourceLabel,
+    workspaceLabel: record.setupProfile.workspaceLabel,
+    project: readEnv("AIVEN_PROJECT"),
+    postgresService: activeTarget.postgresService ?? undefined,
+    kafkaService: activeTarget.kafkaService ?? undefined
+  })
+  const observedTool = result.observedToolUses[0] ?? "anthropic_agent_sdk"
+  const createdAt = now()
+
+  upsertEvents(record, [
+    {
+      runId: record.runId,
+      type: "aiven.mcp.agent.probed",
+      agent: "aiven_operator",
+      state: "aiven_shadow_ready",
+      status: result.ok ? "ok" : "skipped",
+      source: result.source,
+      summary: result.summary,
+      details: {
+        agentRuntime: "anthropic_agent_sdk",
+        controlPlane: "anthropic_agent_sdk_aiven_mcp",
+        launched: result.launched,
+        reasoner: result.reasoner,
+        requestedReasoner: result.requestedReasoner,
+        model: result.model,
+        fallback: result.fallback,
+        error: result.error,
+        observedToolUses: result.observedToolUses,
+        allowedTools: result.allowedTools,
+        text: result.text
+      },
+      createdAt
+    }
+  ])
+
+  record.receipts = [
+    ...record.receipts,
+    receipt(record.runId, {
+      idPrefix: result.ok ? "receipt_aiven_mcp_agent_probe" : "receipt_aiven_mcp_agent_probe_skipped",
+      agent: "aiven_operator",
+      intent: result.ok
+        ? "inspect Aiven control-plane context through Agent SDK MCP"
+        : "launch Aiven Operator Agent MCP probe",
+      tool: observedTool,
+      target: "aiven_workspace",
+      risk: "read_only",
+      result: result.ok ? "ok" : "cached",
+      source: result.source,
+      details: {
+        controlPlane: "anthropic_agent_sdk_aiven_mcp",
+        fallbackFor: undefined,
+        agentRuntime: "anthropic_agent_sdk",
+        observedToolUses: result.observedToolUses,
+        fallback: result.fallback,
+        error: result.error
+      }
+    })
+  ]
+
+  record.validationChecks = [
+    ...record.validationChecks,
+    check(record.runId, {
+      idPrefix: result.ok ? "check_aiven_mcp_agent_probe" : "check_aiven_mcp_agent_probe_skipped",
+      checkName: "aiven_mcp_agent_probe",
+      status: result.ok ? "passed" : "skipped",
+      source: result.source,
+      details: {
+        launched: result.launched,
+        observedToolUses: result.observedToolUses,
+        allowedTools: result.allowedTools,
+        fallback: result.fallback,
+        error: result.error
+      }
+    })
+  ]
+  record.proofSource = mergeProofSource(record.proofSource, result.source)
+}
+
 export const runProofSpine = async (runId: string) => {
   const record = getRecord(runId)
   if (record.timer) {
@@ -1100,6 +1383,7 @@ export const runProofSpine = async (runId: string) => {
   }
   record.status = "running"
 
+  await runAivenMcpAgentProbe(record)
   const result = await runAivenProofSpine(runId)
 
   upsertEvents(record, result.events)
@@ -1267,7 +1551,7 @@ export const runProviderCutover = async (runId: string) => {
   }
 
   if (!canUseAivenProvider()) {
-    const missingEnv = ["AIVEN_POSTGRES_URL"]
+    const missingEnv = ["AIDEN_FRESH_AIVEN_POSTGRES_URL or AIVEN_POSTGRES_URL"]
     const events: RunEvent[] = [
       {
         runId,
@@ -1510,6 +1794,230 @@ export const runProviderCutover = async (runId: string) => {
   return getSnapshot(runId)
 }
 
+const runAdapterPackage = async (runId: string) => {
+  const record = getRecord(runId)
+  const graph = record.behaviorGraph
+  const manifest = record.migrationManifest
+  const createdAt = now()
+
+  if (!graph || !manifest) {
+    upsertEvents(record, [
+      {
+        runId,
+        type: "adapter.package.generated",
+        agent: "adapter_generator",
+        state: "report_ready",
+        status: "skipped",
+        source: "cached",
+        summary: "Adapter package skipped because the behavior graph or migration manifest is missing.",
+        details: {
+          behaviorGraph: Boolean(graph),
+          migrationManifest: Boolean(manifest)
+        },
+        createdAt
+      }
+    ])
+    record.generatedArtifacts = [
+      ...record.generatedArtifacts,
+      {
+        id: artifactId("adapter_package_skipped"),
+        runId,
+        kind: "adapter_package",
+        title: "Generated Aiven adapter package",
+        status: "skipped",
+        source: "cached",
+        details: { behaviorGraph: Boolean(graph), migrationManifest: Boolean(manifest) },
+        createdAt
+      }
+    ]
+    return getSnapshot(runId)
+  }
+
+  const artifactSource: ProofSource = record.proofSource === "fixture" ? "cached" : record.proofSource
+  const adapterPackage = generateAivenAdapterPackage({
+    setupProfile: record.setupProfile,
+    behaviorGraph: graph,
+    migrationManifest: manifest,
+    validationChecks: record.validationChecks,
+    rowValidations: record.rowValidations,
+    artifactSource,
+    artifactStatus: "validated",
+    createdAt
+  })
+  const validation = validateGeneratedAdapterPackage({
+    runId,
+    files: adapterPackage.files,
+    source: artifactSource,
+    createdAt
+  })
+  const artifactStatus: GeneratedArtifact["status"] = validation.ok ? "validated" : "failed"
+  const generatedArtifacts: GeneratedArtifact[] = adapterPackage.artifacts.map((artifact) => ({
+    ...artifact,
+    id: `${artifact.id}_${randomUUID().slice(0, 8)}`,
+    status: artifactStatus
+  }))
+
+  record.generatedArtifacts = [...record.generatedArtifacts, ...generatedArtifacts]
+  record.validationChecks = [...record.validationChecks, ...adapterPackage.checks, ...validation.checks]
+  record.proofSource = mergeProofSource(record.proofSource, artifactSource)
+
+  upsertEvents(record, [
+    {
+      runId,
+      type: "adapter.package.generated",
+      agent: "adapter_generator",
+      state: "report_ready",
+      status: "ok",
+      source: artifactSource,
+      summary: `Generated Aiven adapter package with ${adapterPackage.files.length} reviewable file(s).`,
+      details: {
+        files: adapterPackage.files.map((file) => file.path),
+        artifactCount: generatedArtifacts.length
+      },
+      createdAt
+    },
+    {
+      runId,
+      type: "adapter.package.validated",
+      agent: "artifact_validator",
+      state: "report_ready",
+      status: validation.ok ? "ok" : "failed",
+      source: artifactSource,
+      summary: validation.ok
+        ? "Generated adapter package passed required file, JSON, heading, and secret-scan checks."
+        : "Generated adapter package failed validation and is recorded as a blocker.",
+      details: {
+        checkCount: validation.checks.length,
+        blockerCount: validation.blockers.length
+      },
+      createdAt
+    }
+  ])
+
+  if (!validation.ok) {
+    record.cutoverArtifacts = [
+      ...record.cutoverArtifacts,
+      {
+        id: artifactId("artifact_package_failed"),
+        runId,
+        type: "artifact_bundle",
+        status: "failed",
+        files: adapterPackage.files.map((file) => file.path),
+        proof: "Adapter package failed validation; no cutover PR was attempted.",
+        source: artifactSource,
+        details: { blockerCount: validation.blockers.length },
+        createdAt
+      }
+    ]
+    return getSnapshot(runId)
+  }
+
+  if (!record.setupProfile.github) {
+    record.cutoverArtifacts = [
+      ...record.cutoverArtifacts,
+      {
+        id: artifactId("artifact_package_local"),
+        runId,
+        type: "artifact_bundle",
+        status: "generated",
+        files: adapterPackage.files.map((file) => file.path),
+        proof: "Aiven adapter package generated locally; connect a GitHub source with write permission to open a PR.",
+        source: "cached",
+        details: {
+          reason: "no_github_source",
+          fileCount: adapterPackage.files.length
+        },
+        createdAt
+      }
+    ]
+    upsertEvents(record, [
+      {
+        runId,
+        type: "cutover.artifact.generated",
+        agent: "cutover_manager",
+        state: "report_ready",
+        status: "ok",
+        source: "cached",
+        summary: "Local Aiven adapter artifact package generated; GitHub PR was not requested for this source.",
+        details: { fileCount: adapterPackage.files.length },
+        createdAt
+      }
+    ])
+    return getSnapshot(runId)
+  }
+
+  const branchName = `aiden/graduate-to-aiven-${runId.replace(/[^\w-]+/g, "-").slice(0, 36)}`
+  const prResult = await openCutoverPullRequest({
+    github: record.setupProfile.github,
+    title: "Graduate to Aiven",
+    body: [
+      "Aiden generated this cutover package after building the Aiven migration manifest.",
+      "",
+      "This PR does not switch production traffic. It adds reviewable adapter files, migration notes, and validation output.",
+      "",
+      `Source: ${record.setupProfile.sourceLabel}`,
+      `Readiness: ${graph.readinessScore}/100`
+    ].join("\n"),
+    branchName,
+    files: adapterPackage.files.map((file) => ({
+      path: file.path,
+      content: file.contents
+    }))
+  })
+  const prSource: ProofSource = prResult.status === "opened" ? "live" : "cached"
+
+  record.cutoverArtifacts = [
+    ...record.cutoverArtifacts,
+    {
+      id: artifactId("github_pr"),
+      runId,
+      type: "github_pr",
+      status: prResult.status,
+      url: prResult.url,
+      branch: prResult.branch ?? branchName,
+      files: adapterPackage.files.map((file) => file.path),
+      proof:
+        prResult.status === "opened"
+          ? "GitHub cutover PR opened with generated Aiven adapter files."
+          : prResult.status === "skipped"
+            ? `GitHub cutover PR skipped: ${prResult.error ?? "write permission was not available"}.`
+            : `GitHub cutover PR failed: ${prResult.error ?? "unknown GitHub error"}.`,
+      source: prSource,
+      details: {
+        repository: record.setupProfile.github.fullName,
+        error: prResult.error
+      },
+      createdAt
+    }
+  ]
+  record.proofSource = mergeProofSource(record.proofSource, prSource)
+  upsertEvents(record, [
+    {
+      runId,
+      type: prResult.status === "opened" ? "cutover.pr.opened" : prResult.status === "skipped" ? "cutover.pr.skipped" : "cutover.pr.failed",
+      agent: "cutover_manager",
+      state: "report_ready",
+      status: prResult.status === "opened" ? "ok" : prResult.status === "skipped" ? "skipped" : "failed",
+      source: prSource,
+      summary:
+        prResult.status === "opened"
+          ? "GitHub cutover PR opened with generated Aiven adapter package."
+          : prResult.status === "skipped"
+            ? "GitHub cutover PR skipped; local generated package remains available."
+            : "GitHub cutover PR failed; local generated package remains available.",
+      details: {
+        url: prResult.url,
+        branch: prResult.branch ?? branchName,
+        files: adapterPackage.files.map((file) => file.path),
+        error: prResult.error
+      },
+      createdAt
+    }
+  ])
+
+  return getSnapshot(runId)
+}
+
 export const runOneClickGraduate = async (runId: string) => {
   const mode = readAgentRunMode()
   if (mode === "fixture") {
@@ -1526,7 +2034,11 @@ export const runOneClickGraduate = async (runId: string) => {
   record.events = []
   record.kafkaEvents = []
   record.proofSource = "fixture"
+  record.behaviorGraph = undefined
   record.behaviorFindings = []
+  record.migrationManifest = undefined
+  record.generatedArtifacts = []
+  record.cutoverArtifacts = []
   record.receipts = []
   record.validationChecks = []
   record.rowValidations = []
@@ -1540,9 +2052,7 @@ export const runOneClickGraduate = async (runId: string) => {
     runId,
     mode,
     requireLivePg: mode === "live_pg",
-    requireKafka:
-      process.env.AGENT_REQUIRE_KAFKA === "true" ||
-      configuredEnv(["AIVEN_KAFKA_BOOTSTRAP_SERVERS", "AIVEN_KAFKA_USERNAME", "AIVEN_KAFKA_PASSWORD"])
+    requireKafka: process.env.AGENT_REQUIRE_KAFKA === "true" || hasActiveAivenKafkaTarget()
   }
 
   const steps: AgentStep[] = [
@@ -1625,6 +2135,32 @@ export const runOneClickGraduate = async (runId: string) => {
               ? "Controlled runtime cutover is marked as an adapter-generation blocker; shadow migration can complete."
               : "Scoped runtime cutover did not produce the required live app_events proof.",
           blocking: !adapterRequired
+        })
+      }
+    },
+    {
+      name: "adapter_package_generator",
+      label: "Adapter package and cutover artifact",
+      risk: "safe_write",
+      requiredForLivePg: false,
+      async run(stepContext) {
+        const snapshot = await runAdapterPackage(stepContext.runId)
+        const packageEvent = snapshot.events.find((event) => event.type === "adapter.package.validated")
+        const prEvent = snapshot.events.find(
+          (event) =>
+            event.type === "cutover.pr.opened" ||
+            event.type === "cutover.pr.skipped" ||
+            event.type === "cutover.artifact.generated"
+        )
+        const packageOk = packageEvent?.status === "ok"
+        const artifactOk = Boolean(prEvent && (prEvent.status === "ok" || prEvent.status === "skipped"))
+        return stepResult(stepContext, snapshot, {
+          ok: packageOk && artifactOk,
+          summary:
+            packageOk && artifactOk
+              ? "Generated adapter package and recorded PR or local cutover artifact."
+              : "Adapter package or cutover artifact generation did not complete cleanly.",
+          blocking: false
         })
       }
     },
@@ -1739,10 +2275,17 @@ export const getSnapshot = (runId = fixtureRunId): RunSnapshot => {
   const adapterRequiredForProfile = !isPulseWallDemoRuntimeProfile(record.setupProfile)
   const reportEvent = record.events.find((event) => event.type === "proof.package.generated" && event.status === "ok")
   const reportReady = Boolean(reportEvent)
+  const manifestBlockers =
+    record.migrationManifest?.blockers.map((blockerItem) => `${blockerItem.title}: ${blockerItem.resolution}`) ?? []
+  const artifactBlockers = record.generatedArtifacts
+    .filter((artifact) => artifact.status === "failed")
+    .map((artifact) => `${artifact.title}: generated artifact validation failed`)
   const reportBlockers = [
     ...(adapterRequiredForProfile ? ["Generated application adapter required before controlled runtime cutover."] : []),
+    ...manifestBlockers,
+    ...artifactBlockers,
     ...finalReport.blockers
-  ]
+  ].filter((blockerItem, index, all) => all.indexOf(blockerItem) === index)
   const generatedRecommendation =
     typeof reportEvent?.details?.recommendation === "string"
       ? reportEvent.details.recommendation
@@ -1760,7 +2303,11 @@ export const getSnapshot = (runId = fixtureRunId): RunSnapshot => {
     accessSnapshot,
     events: record.events,
     kafkaEvents: record.kafkaEvents.length > 0 ? record.kafkaEvents : visibleFixtureKafkaEvents(record),
+    behaviorGraph: record.behaviorGraph,
     behaviorFindings: record.behaviorFindings.length > 0 ? record.behaviorFindings : behaviorFindings,
+    migrationManifest: record.migrationManifest,
+    generatedArtifacts: record.generatedArtifacts,
+    cutoverArtifacts: record.cutoverArtifacts,
     receipts: mergedReceipts,
     validationChecks: mergedValidationChecks,
     report: {

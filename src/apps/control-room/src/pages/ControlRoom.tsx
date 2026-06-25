@@ -1,16 +1,15 @@
 import type { Post, PulseWallEvent, RunSnapshot } from "@aiden/contracts"
-import { finalReport as fixtureOutcomeReport } from "@aiden/fixtures"
 import { Activity, CheckCircle2, Database, RadioTower, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { AgentMigrationSpine } from "../components/AgentMigrationSpine"
 import { AccessBrokerPanel } from "../components/AccessBrokerPanel"
 import { AivenProofPlane } from "../components/AivenProofPlane"
 import { BehaviorMap } from "../components/BehaviorMap"
-import { ColdOpenOutcome } from "../components/ColdOpenOutcome"
 import { CommandStrip } from "../components/CommandStrip"
 import { CutoverProof } from "../components/CutoverProof"
 import { FinalReport } from "../components/FinalReport"
 import { KafkaAgentBus } from "../components/KafkaAgentBus"
+import { MigrationChangeTrace } from "../components/MigrationChangeTrace"
 import { PresenterControls } from "../components/PresenterControls"
 import { RealtimeProof } from "../components/RealtimeProof"
 import { ReceiptStream } from "../components/ReceiptStream"
@@ -19,6 +18,7 @@ import { ValidationCards } from "../components/ValidationCards"
 import {
   addReaction,
   createRun,
+  getCurrentRun,
   getRun,
   graduateRun,
   listPosts,
@@ -33,7 +33,7 @@ import {
   runSourceScan,
   stepRun
 } from "../lib/api"
-import { deriveRunProgress, latestSummary } from "../lib/deriveRunView"
+import { deriveRunProgress, latestSummary, plannedWorkflowEventCount } from "../lib/deriveRunView"
 import { readStoredSetupProfile } from "../lib/setupProfile"
 
 export const ControlRoom = () => {
@@ -52,7 +52,6 @@ export const ControlRoom = () => {
   const runId = snapshot?.runId
   const progress = deriveRunProgress(snapshot)
   const currentSummary = latestSummary(snapshot)
-  const coldOpenReport = snapshot?.report.demoCutoverStatus === "passed" ? snapshot.report : fixtureOutcomeReport
   const cutoverReady = Boolean(
     snapshot?.events.some((event) => event.type === "cutover.demo_runtime.ready" && event.status === "ok")
   )
@@ -67,7 +66,8 @@ export const ControlRoom = () => {
     let cancelled = false
     const boot = async () => {
       try {
-        const run = await createRun(readStoredSetupProfile())
+        const currentRun = await getCurrentRun()
+        const run = currentRun.events.length > 0 ? currentRun : await createRun(readStoredSetupProfile())
         await refreshAdapter()
         if (!cancelled) setSnapshot(run)
       } catch (bootError) {
@@ -242,8 +242,6 @@ export const ControlRoom = () => {
 
       {error ? <div className="error-strip">{error}</div> : null}
 
-      <ColdOpenOutcome accessSnapshot={snapshot.accessSnapshot} report={coldOpenReport} />
-
       <section className="run-strip">
         <div>
           <p className="eyebrow">Current state</p>
@@ -256,7 +254,7 @@ export const ControlRoom = () => {
         <div className="run-proof">
           <span>
             <CheckCircle2 aria-hidden="true" size={16} />
-            {visibleEvents.length}/14 events
+            {visibleEvents.length}/{plannedWorkflowEventCount} events
           </span>
           <span>
             <Activity aria-hidden="true" size={16} />
@@ -269,10 +267,13 @@ export const ControlRoom = () => {
         </div>
       </section>
 
+      <MigrationChangeTrace snapshot={snapshot} />
+
       <PresenterControls
         cutoverRunning={cutoverRunning}
         disabled={graduateRunning}
         eventCount={visibleEvents.length}
+        plannedEventCount={plannedWorkflowEventCount}
         kafkaRunning={kafkaRunning}
         migrationRunning={migrationRunning}
         onPause={pause}
@@ -306,8 +307,8 @@ export const ControlRoom = () => {
             <span>02</span>
             <strong>Execution timeline</strong>
           </div>
-          <AgentMigrationSpine events={visibleEvents} />
-          <BehaviorMap findings={snapshot.behaviorFindings} />
+          <AgentMigrationSpine events={visibleEvents} plannedEventCount={plannedWorkflowEventCount} />
+          <BehaviorMap findings={snapshot.behaviorFindings} behaviorGraph={snapshot.behaviorGraph} />
         </div>
 
         <div className="proof-lane">
@@ -325,7 +326,11 @@ export const ControlRoom = () => {
         <RealtimeProof checks={snapshot.validationChecks} appEvents={appEvents} />
         <ValidationCards checks={snapshot.validationChecks} report={snapshot.report} />
         <CutoverProof snapshot={snapshot} />
-        <FinalReport report={snapshot.report} />
+        <FinalReport
+          report={snapshot.report}
+          generatedArtifacts={snapshot.generatedArtifacts}
+          cutoverArtifacts={snapshot.cutoverArtifacts}
+        />
       </section>
 
       <footer className="footer-note">

@@ -26,9 +26,8 @@ export const ColdOpenOutcome = ({ accessSnapshot, report }: { accessSnapshot: Ac
       </div>
       <h2>{report.headline}</h2>
       <p>
-        The controlled runtime path is on Aiven through Henri's pre-connected workspace. Aiden can
-        create a workspace during setup for teams without Aiven. The original PulseWall app remains
-        untouched, blockers are explicit, and every migration step has a receipt path.
+        The controlled runtime path is created fresh on Aiven for this run. The original PulseWall app
+        remains untouched, blockers are explicit, and every migration step has a receipt path.
       </p>
       <div className="outcome-path">
         <span>Lovable UI</span>

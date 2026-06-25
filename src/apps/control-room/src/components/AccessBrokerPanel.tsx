@@ -40,12 +40,12 @@ export const AccessBrokerPanel = ({ accessSnapshot, isRefreshing, onRefresh }: A
       <div className="access-broker-header">
         <div>
           <p className="eyebrow">Aiven Workspace Setup</p>
-          <h2>Connected workspace. Safe graduation.</h2>
+          <h2>Account connected. Fresh target on demand.</h2>
           <span>
-            Workspace: Henri pre-connected workspace · Mode: controlled Aiven migration
+            Workspace: fresh Aiven landing zone · Mode: controlled Aiven migration
           </span>
           <span>
-            No Aiven account? Aiden can create a workspace during setup.
+            Aiden creates a new Aiven Postgres service for each graduation run.
           </span>
           <span>
             Mode: {modeLabel(accessSnapshot.mode)} · Required checks {requiredReady}/{requiredTotal} · Production cutover not requested

@@ -38,6 +38,10 @@ type StepParams = {
 }
 
 export const registerRunRoutes = async (app: FastifyInstance) => {
+  app.get("/api/runs/current", async () => {
+    return getSnapshot()
+  })
+
   app.post<{ Body: CreateRunBody }>("/api/runs", async (request) => {
     applySetupRuntimeConfig(request.body ?? {})
     resetAdapterRuntime()

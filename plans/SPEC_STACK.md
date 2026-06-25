@@ -261,6 +261,7 @@ deterministic tools still execute the current data-plane migration.
 
 Add only if time permits:
 
+- [`OVERMIND_EXTRACTION_IMPLEMENTATION_SPEC.md`](OVERMIND_EXTRACTION_IMPLEMENTATION_SPEC.md) — selective extraction plan for the useful `origin/overmind` ideas: behavior graph, adapter artifacts, cutover PR, Aiven target resolver, and optional hardening.
 - `PITCH_SCRIPT.md` — 4-minute pitch and 1-minute Q&A answers.
 - `POST_HACKATHON_ROADMAP.md` — how this becomes the real Aiden product.
 
@@ -283,6 +284,7 @@ These should not block coding the critical path.
 - Source app/data/workspace setup before the control room belongs in `source-intake-workspace-setup/README.md`.
 - One-click agent runtime behavior belongs in `one-click-agent-runtime/README.md`.
 - Anthropic Agent SDK Aiven MCP report/reasoner behavior belongs in `anthropic-agent-sdk-reasoner/README.md`.
+- Selective `origin/overmind` extraction belongs in `OVERMIND_EXTRACTION_IMPLEMENTATION_SPEC.md`.
 
 If a fact appears in two places, one must clearly be canonical.
 

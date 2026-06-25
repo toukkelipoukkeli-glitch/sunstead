@@ -29,7 +29,8 @@ local API -> Aiven Postgres -> local Aiden adapter -> browser API endpoints
 
 Kafka remains a sponsor-visible proof path, but it is not allowed to block the browser-critical runtime cutover.
 
-The control-plane setup should include the hosted Aiven MCP server configured for Codex:
+The control-plane setup should include the hosted Aiven MCP server configured directly in the Agent
+SDK runtime. Codex configuration is optional developer tooling, not the product gate:
 
 ```toml
 [mcp_servers.aiven]
@@ -60,9 +61,10 @@ The repo also keeps the raw MCP server descriptor for tools that expect JSON MCP
 
 `allow_secrets=true` is acceptable for the local demo operator, but every script must redact secrets from output.
 
-Current implementation truth: the verifier checks MCP config/OAuth, but the local API runtime proves
-Aiven Postgres through direct Aiven fallback code. Those receipt rows must remain labeled as fallback
-unless a real MCP action is added.
+Current implementation truth: the verifier checks the Agent SDK Aiven MCP runtime contract and the
+proof spine records `aiven.mcp.agent.probed`. The local API runtime still proves Aiven Postgres
+through direct Aiven fallback code. Those data-plane receipt rows must remain labeled as fallback
+unless real MCP read/write actions replace them.
 
 ## Position In Critical Path
 
@@ -117,7 +119,7 @@ The script assumes the local API is already running at `API_BASE_URL` or `http:/
 
 It must not start the dev server itself. Starting the server should remain a deliberate presenter step so port failures are visible.
 
-The script must verify that `.codex/config.toml` contains `mcp_servers.aiven` before it runs live proof. It may also verify `.mcp.json` for the raw server descriptor. It does not need to print the server URL in normal output.
+The script must verify that the Agent SDK path uses direct Aiven MCP configuration before it runs live proof. It may also verify `.mcp.json` for the raw server descriptor. It does not need to print the server URL in normal output.
 
 ### 2. API sequence
 
@@ -147,6 +149,7 @@ Hard pass requirements:
 - API health returns `ok: true`.
 - A fresh/reset run is created.
 - source scan emits `behavior.scan.completed` with `source: "live"` and `status: "ok"`.
+- proof spine records `aiven.mcp.agent.probed`; if `ANTHROPIC_API_KEY` is configured, the event must show that the Aiven Operator Agent launched.
 - data migration emits `migration.schema.applied` with `source: "live"` and `status: "ok"`.
 - data migration emits `migration.rows.validated` with `source: "live"` and `status: "ok"`.
 - row validations all have `source: "live"` and `status: "passed"`.
@@ -167,7 +170,7 @@ Hard pass requirements:
 
 Soft pass requirements:
 
-- `.codex/config.toml` contains the Codex `mcp_servers.aiven` configuration.
+- Codex `.codex/config.toml` contains optional developer `mcp_servers.aiven` configuration if local Codex MCP inspection is used.
 - `.mcp.json` contains the raw `mcpServers.aiven` server descriptor.
 - proof spine can verify Aiven project/services when `AIVEN_TOKEN` and `AIVEN_PROJECT` exist.
 - proof spine can produce/list one Kafka proof event when Kafka env exists.
@@ -192,8 +195,13 @@ AIVEN_POSTGRES_URL
 Required repo config:
 
 ```text
-.codex/config.toml with mcp_servers.aiven.url = https://mcp.aiven.live/mcp?allow_secrets=true
 .mcp.json with mcpServers.aiven.url = https://mcp.aiven.live/mcp?allow_secrets=true
+```
+
+Optional developer config:
+
+```text
+.codex/config.toml with mcp_servers.aiven.url = https://mcp.aiven.live/mcp?allow_secrets=true
 ```
 
 Recommended:

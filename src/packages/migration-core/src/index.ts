@@ -460,3 +460,6 @@ export const classifyBehavior = async (): Promise<BehaviorFinding[]> => {
 }
 
 export const fixtureBehaviorGraph = fixtureBehaviorFindings
+
+export { buildBehaviorGraph, behaviorFindingsFromGraph } from "./graph.js"
+export { buildMigrationManifest } from "./manifest.js"

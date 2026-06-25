@@ -31,6 +31,8 @@ export const createRun = async (setupProfile?: SetupProfile) =>
     })
   )
 
+export const getCurrentRun = async () => readJson<RunSnapshot>(await fetch("/api/runs/current"))
+
 export const submitSetupProfile = async (config: SetupRuntimeConfig) =>
   readJson<{ ok: boolean; applied: Record<string, unknown> }>(
     await fetch("/api/setup/profile", {

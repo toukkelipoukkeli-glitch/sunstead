@@ -64,9 +64,9 @@ This spec owns the visible and runtime behavior for the `access_broker` step. M0
 
 Built or proven:
 
-- Aiven MCP config is present for Codex.
+- Aiven MCP config is present for the Agent SDK runtime; Codex MCP config is optional developer tooling.
 - Aiven project `henri-2699` and Postgres service `pg-3e23b49c` were discovered during setup.
-- The current API runtime labels live proof actions as direct Aiven fallback, not live MCP tool calls.
+- The proof spine records the read-only Aiven Operator MCP probe, while current data-plane proof actions are still labeled as direct Aiven fallback.
 - Ignored `.env.local` contains the local live Postgres connection values.
 - `npm run verify:live` passes the live Aiven Postgres runtime path.
 - The existing fixture event stream begins with `access.connected`.
@@ -326,9 +326,9 @@ Ready
 
 Demo behavior:
 
-- Check Codex/Aiven MCP config.
-- Treat config presence as connected but cached/configured evidence, not as proof that the API executed a live MCP tool call.
-- If a real MCP action is added later, it may upgrade the proof label.
+- Check Agent SDK Aiven MCP config.
+- Treat config presence as connected/configured evidence.
+- Upgrade to live proof only when `aiven.mcp.agent.probed` observes an Aiven MCP tool call; keep data-plane fallback labels until MCP read/write wrappers replace them.
 
 UI copy:
 
