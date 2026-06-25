@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "aiven": {
+      "url": "https://mcp.aiven.live/mcp?allow_secrets=true"
+    }
+  }
+}
