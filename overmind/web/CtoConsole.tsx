@@ -19,11 +19,32 @@ import { useEffect, useRef, useState } from 'react'
 import './product.css'
 import { apiFetch } from './config.ts'
 import { Stepper } from './components/Stepper.tsx'
+import { WeeklyBriefing } from './components/WeeklyBriefing.tsx'
 
 interface Msg {
   role: 'cto' | 'me'
   text: string
 }
+
+// ── Browser SpeechRecognition (push-to-talk). Vendor-prefixed in Chrome; absent in Firefox/Safari.
+// We feature-detect once at module load and hide the mic entirely when it's missing.
+type SpeechRecognitionLike = {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  onresult: ((e: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+const SpeechRecognitionCtor: (new () => SpeechRecognitionLike) | undefined =
+  typeof window !== 'undefined'
+    ? ((window as unknown as Record<string, unknown>).SpeechRecognition as never) ??
+      ((window as unknown as Record<string, unknown>).webkitSpeechRecognition as never)
+    : undefined
+const VOICE_INPUT_SUPPORTED = !!SpeechRecognitionCtor
 
 // ── The live-state contract from GET /api/cto/state?tenant=demo ──
 // Built by a teammate in parallel; we code against this shape and degrade on any null/missing field.
@@ -95,6 +116,101 @@ export default function CtoConsole() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
+  // ── Voice: the CTO speaks its replies (TTS) and you can talk back (push-to-talk) ──
+  const [voiceOn, setVoiceOn] = useState(true) // 🔊 default ON
+  const [speaking, setSpeaking] = useState(false) // a clip is currently playing/loading
+  const [listening, setListening] = useState(false) // mic is capturing
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUrlRef = useRef<string | null>(null) // blob URL to revoke
+  const recogRef = useRef<SpeechRecognitionLike | null>(null)
+
+  // Stop any in-flight speech + release the blob URL.
+  function stopSpeaking() {
+    const a = audioRef.current
+    if (a) {
+      a.pause()
+      a.src = ''
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current)
+      audioUrlRef.current = null
+    }
+    setSpeaking(false)
+  }
+
+  // POST text → /api/cto/speak, play the returned audio/mpeg. Best-effort: if the endpoint is
+  // missing or returns no audio, we stay silent (text reply is already on screen) — never throw.
+  async function speak(text: string): Promise<void> {
+    const clean = text.trim()
+    if (!clean) return
+    stopSpeaking()
+    setSpeaking(true)
+    try {
+      const res = await apiFetch('/api/cto/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clean }),
+      })
+      if (!res.ok) {
+        setSpeaking(false)
+        return
+      }
+      const blob = await res.blob()
+      if (!blob.size) {
+        setSpeaking(false)
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      audioUrlRef.current = url
+      const audio = audioRef.current ?? new Audio()
+      audioRef.current = audio
+      audio.src = url
+      audio.onended = () => stopSpeaking()
+      audio.onerror = () => stopSpeaking()
+      await audio.play().catch(() => stopSpeaking())
+    } catch {
+      setSpeaking(false)
+    }
+  }
+
+  // Push-to-talk: capture one utterance, drop it in the composer, and send it via the normal path.
+  function toggleMic() {
+    if (!VOICE_INPUT_SUPPORTED || !SpeechRecognitionCtor) return
+    if (listening) {
+      recogRef.current?.stop()
+      return
+    }
+    const recog = new SpeechRecognitionCtor()
+    recogRef.current = recog
+    recog.lang = 'en-US'
+    recog.interimResults = false
+    recog.continuous = false
+    recog.onresult = (e) => {
+      const transcript = e.results?.[0]?.[0]?.transcript ?? ''
+      if (transcript.trim()) {
+        setDraft('')
+        send(transcript.trim())
+      }
+    }
+    recog.onerror = () => setListening(false)
+    recog.onend = () => setListening(false)
+    try {
+      recog.start()
+      setListening(true)
+    } catch {
+      setListening(false)
+    }
+  }
+
+  // Clean up audio + mic on unmount.
+  useEffect(() => {
+    return () => {
+      stopSpeaking()
+      recogRef.current?.abort?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Poll the live monitoring snapshot every 8s (and once on mount). Best-effort — placeholders fill
   // in when the endpoint is down so the surface always looks complete.
   useEffect(() => {
@@ -141,9 +257,11 @@ export default function CtoConsole() {
     const text = (textArg ?? draft).trim()
     if (!text || streaming) return
     setDraft('')
+    stopSpeaking() // a new question interrupts any in-flight reply audio
     const history = [...messages, { role: 'me' as const, text }]
     setMessages([...history, { role: 'cto', text: '' }])
     setStreaming(true)
+    let reply = '' // accumulate the full reply so we can speak it once done
 
     try {
       const res = await apiFetch('/api/cto/chat', {
@@ -156,7 +274,8 @@ export default function CtoConsole() {
       })
 
       if (!res.ok || !res.body) {
-        appendToLast(fallbackReply(text))
+        reply = fallbackReply(text)
+        appendToLast(reply)
         return
       }
 
@@ -182,20 +301,29 @@ export default function CtoConsole() {
               const piece = extractText(data)
               if (piece) {
                 got = true
+                reply += piece
                 appendToLast(piece)
               }
             }
           }
         } else {
           got = true
+          reply += chunk
           appendToLast(chunk)
         }
       }
-      if (!got) appendToLast(fallbackReply(text))
+      if (!got) {
+        reply = fallbackReply(text)
+        appendToLast(reply)
+      }
     } catch {
-      appendToLast(fallbackReply(text))
+      reply = fallbackReply(text)
+      appendToLast(reply)
     } finally {
       setStreaming(false)
+      // Speak the finished reply if voice is on. speak() degrades silently if /api/cto/speak is
+      // unavailable — the text reply is already on screen regardless.
+      if (voiceOn && reply.trim()) void speak(reply)
     }
   }
 
@@ -256,13 +384,41 @@ export default function CtoConsole() {
               <span className="pp-avatar">
                 <BotMark />
               </span>
-              <div>
+              <div className="pp-who">
                 <div className="pp-who-name">Your Aiven CTO</div>
                 <div className="pp-who-role">
                   <span className="pp-live-dot" /> watching {watching.join(' · ')} · live
                 </div>
               </div>
+              {/* 🔊 voice toggle — speak the CTO's replies aloud (default ON) */}
+              <button
+                className={`pp-voice-toggle${voiceOn ? ' on' : ''}`}
+                onClick={() => {
+                  if (voiceOn) stopSpeaking()
+                  setVoiceOn((v) => !v)
+                }}
+                aria-pressed={voiceOn}
+                title={voiceOn ? 'Voice on — replies are spoken' : 'Voice off — text only'}
+              >
+                {voiceOn ? <SpeakerMark /> : <SpeakerOffMark />}
+              </button>
             </div>
+
+            {/* 🎙️ discoverable "this CTO talks" affordance */}
+            <div className="pp-meet">
+              <span className="pp-meet-emoji" aria-hidden="true">🎙️</span>
+              <span className="pp-meet-text">
+                <b>Meet your CTO.</b> It speaks its answers and listens — talk to it like a real one-on-one.
+              </span>
+            </div>
+
+            {/* Weekly briefing — a real ~90s spoken episode grounded in live metrics */}
+            <WeeklyBriefing
+              voiceOn={voiceOn}
+              speaking={speaking}
+              onSpeak={speak}
+              onStop={stopSpeaking}
+            />
 
             <div className="pp-rail-section-title">Infrastructure</div>
 
@@ -440,12 +596,39 @@ export default function CtoConsole() {
 
             <div className="pp-composer">
               <div className="pp-composer-inner">
+                {/* subtle "speaking…" banner with a stop control while a clip plays */}
+                {speaking && (
+                  <div className="pp-speaking">
+                    <span className="pp-speaking-wave" aria-hidden="true">
+                      <i /><i /><i />
+                    </span>
+                    <span>Your CTO is speaking…</span>
+                    <button className="pp-speaking-stop" onClick={stopSpeaking}>
+                      Stop
+                    </button>
+                  </div>
+                )}
                 <div className="pp-composer-box">
+                  {/* push-to-talk mic — only rendered when SpeechRecognition exists (Chrome/Edge) */}
+                  {VOICE_INPUT_SUPPORTED && (
+                    <button
+                      className={`pp-mic${listening ? ' listening' : ''}`}
+                      onClick={toggleMic}
+                      disabled={streaming}
+                      aria-pressed={listening}
+                      aria-label={listening ? 'Stop listening' : 'Talk to your CTO'}
+                      title={listening ? 'Listening… click to stop' : 'Talk to your CTO'}
+                    >
+                      <MicMark />
+                    </button>
+                  )}
                   <textarea
                     ref={taRef}
                     rows={1}
                     value={draft}
-                    placeholder="Ask your CTO anything — scaling, cost, risks…"
+                    placeholder={
+                      listening ? 'Listening…' : 'Ask your CTO anything — scaling, cost, risks…'
+                    }
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -464,7 +647,9 @@ export default function CtoConsole() {
                   </button>
                 </div>
                 <div className="pp-composer-hint">
-                  Your CTO manages Aiven for you — you never open the dashboard.
+                  {VOICE_INPUT_SUPPORTED
+                    ? 'Type, or hold the mic to talk — your CTO answers out loud.'
+                    : 'Your CTO manages Aiven for you — you never open the dashboard.'}
                 </div>
               </div>
             </div>
@@ -601,6 +786,30 @@ function SendMark() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function MicMark() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+function SpeakerMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+      <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  )
+}
+function SpeakerOffMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+      <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }

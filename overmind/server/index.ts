@@ -22,6 +22,8 @@ import {
 } from './workos.ts'
 import { ctoChat, getPgMetrics } from './cto-chat.ts'
 import { ensureDemoTenant, getTenant } from './tenants.ts'
+import { speak, VoiceUnavailableError, VoiceUpstreamError } from './voice.ts'
+import { generateBriefing } from './briefing.ts'
 
 // ── Fan-out hub ──────────────────────────────────────────────────────────────────
 // Every connected control-room holds one emitter in this set. A run broadcasts each
@@ -191,6 +193,51 @@ app.post('/api/cto/chat', async (c) => {
   })
 })
 
+// ── Voice CTO: speak a script (ElevenLabs TTS, server-side) ──────────────────────────
+// The browser POSTs text and gets back audio/mpeg bytes. The ELEVENLABS_API_KEY lives only on the
+// server (voice.ts) and is sent only to ElevenLabs — it never reaches the client. Degrades to 503
+// JSON (no key) / 502 JSON (upstream failure) instead of crashing.
+app.post('/api/cto/speak', async (c) => {
+  let body: any = {}
+  try {
+    body = await c.req.json()
+  } catch {
+    /* empty/invalid body */
+  }
+  const text = String(body?.text ?? '').trim()
+  const voice = body?.voice ? String(body.voice) : undefined
+  if (!text) return c.json({ error: 'missing "text" to speak' }, 400)
+
+  try {
+    const audio = await speak(text, voice)
+    // Return a standard Response with the audio bytes. We slice into a fresh ArrayBuffer sized
+    // exactly to the audio so no extra pool memory leaks into the body.
+    const ab = audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength)
+    return new Response(ab as ArrayBuffer, {
+      status: 200,
+      headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' },
+    })
+  } catch (e) {
+    if (e instanceof VoiceUnavailableError) return c.json({ error: e.message, code: e.code }, 503)
+    if (e instanceof VoiceUpstreamError)
+      return c.json({ error: e.message, code: e.code }, e.status >= 500 ? 502 : 502)
+    return c.json({ error: `voice failed: ${(e as Error)?.message ?? e}` }, 500)
+  }
+})
+
+// ── Voice CTO: weekly spoken briefing script (grounded in REAL Aiven data) ────────────
+// Returns { script, ts, stats }. The frontend turns `script` into audio via /api/cto/speak.
+// Always 200 with a real, grounded script — generateBriefing degrades to a deterministic template
+// (same real numbers) if the model is unavailable, and never fabricates metrics.
+app.get('/api/cto/briefing', async (c) => {
+  try {
+    const briefing = await generateBriefing(c.req.query('tenant') ?? 'demo')
+    return c.json(briefing)
+  } catch (e) {
+    return c.json({ error: `briefing failed: ${(e as Error)?.message ?? e}` }, 500)
+  }
+})
+
 // ── Serve the built control-room in production ──────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   app.use('/*', serveStatic({ root: './dist' }))
@@ -216,6 +263,7 @@ serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`   GET  /api/health   GET /api/stream (SSE)   POST /api/run {source?}`)
   console.log(`   auth: GET /api/auth/login|callback|me|logout   POST /api/agents/register`)
   console.log(`   cto:  GET /api/tenant/:id   GET /api/cto/state   POST /api/cto/chat (SSE)`)
+  console.log(`   voice: POST /api/cto/speak (audio/mpeg)   GET /api/cto/briefing`)
 })
 
 // Graceful shutdown: stop the monitor tick and drain the pg pools so restarts don't drop sockets.

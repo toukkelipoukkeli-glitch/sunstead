@@ -455,6 +455,7 @@
   overflow-y: auto;
 }
 .pp-rail-head { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; }
+.pp-rail-head .pp-who { flex: 1; min-width: 0; }
 .pp-avatar {
   width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
   background: var(--pp-ink); color: #fff;
@@ -656,4 +657,117 @@
 }
 .pp-send:hover { background: var(--pp-red-d); }
 .pp-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Voice CTO ── */
+
+/* 🔊 voice toggle in the rail head */
+.pp-voice-toggle {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; border: 1px solid var(--pp-line2); color: var(--pp-dim);
+  transition: all 0.13s;
+}
+.pp-voice-toggle:hover { border-color: var(--pp-txt); color: var(--pp-txt); }
+.pp-voice-toggle.on { background: var(--pp-red); border-color: var(--pp-red); color: #fff; }
+.pp-voice-toggle.on:hover { background: var(--pp-red-d); border-color: var(--pp-red-d); }
+
+/* 🎙️ "meet your CTO" affordance */
+.pp-meet {
+  display: flex; align-items: flex-start; gap: 9px; margin: 12px 0 2px;
+  background: rgba(0, 123, 120, 0.06); border: 1px solid rgba(0, 123, 120, 0.18);
+  border-radius: 12px; padding: 11px 13px;
+}
+.pp-meet-emoji { font-size: 16px; line-height: 1.4; flex-shrink: 0; }
+.pp-meet-text { font-size: 12px; line-height: 1.5; color: var(--pp-dim); }
+.pp-meet-text b { color: var(--pp-txt); font-weight: 600; }
+
+/* weekly briefing card */
+.pp-brief-card {
+  background: #fff; border: 1px solid var(--pp-line);
+  border-radius: 12px; padding: 14px;
+}
+.pp-brief-top { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 12px; }
+.pp-brief-emoji {
+  font-size: 18px; line-height: 1; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--pp-cream); border: 1px solid var(--pp-line);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pp-brief-headings { min-width: 0; }
+.pp-brief-title { font-size: 13.5px; font-weight: 700; color: var(--pp-txt); }
+.pp-brief-sub { font-size: 12px; color: var(--pp-dim); margin-top: 1px; line-height: 1.4; }
+.pp-brief-play {
+  width: 100%; cursor: pointer; border: none; border-radius: 10px;
+  background: var(--pp-ink); color: #fff;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  padding: 10px 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: opacity 0.13s, transform 0.13s;
+}
+.pp-brief-play:hover { transform: translateY(-1px); }
+.pp-brief-play:disabled { opacity: 0.55; cursor: default; transform: none; }
+.pp-spin-sm { width: 13px; height: 13px; border-width: 2px; }
+.pp-brief-fail {
+  margin-top: 9px; font-size: 12px; line-height: 1.45; color: var(--pp-warn);
+}
+.pp-brief-retry,
+.pp-brief-toggle {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--pp-red-d);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.pp-brief-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 11px;
+}
+.pp-brief-ts { font-size: 11px; color: var(--pp-dim2); font-family: "Geist Mono", monospace; }
+.pp-brief-script {
+  margin-top: 9px; font-size: 12.5px; line-height: 1.6; color: var(--pp-txt);
+  background: var(--pp-cream); border: 1px solid var(--pp-line);
+  border-radius: 9px; padding: 11px 12px;
+  max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+}
+.pp-brief-caption { margin-top: 9px; font-size: 11px; color: var(--pp-dim2); line-height: 1.4; }
+
+/* push-to-talk mic in the composer */
+.pp-mic {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; border: 1px solid var(--pp-line2); color: var(--pp-dim);
+  transition: all 0.13s;
+}
+.pp-mic:hover { border-color: var(--pp-txt); color: var(--pp-txt); }
+.pp-mic:disabled { opacity: 0.4; cursor: not-allowed; }
+.pp-mic.listening {
+  background: var(--pp-crit); border-color: var(--pp-crit); color: #fff;
+  animation: pp-mic-pulse 1.4s ease-out infinite;
+}
+@keyframes pp-mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(218, 54, 51, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0); }
+}
+
+/* "speaking…" banner above the composer */
+.pp-speaking {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 10px;
+  font-size: 12.5px; font-weight: 500; color: var(--pp-red-d);
+  background: rgba(0, 123, 120, 0.07); border: 1px solid rgba(0, 123, 120, 0.2);
+  border-radius: 999px; padding: 6px 8px 6px 13px; width: fit-content;
+  max-width: 100%; margin-left: auto; margin-right: auto;
+}
+.pp-speaking-wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; }
+.pp-speaking-wave i {
+  width: 3px; border-radius: 2px; background: var(--pp-red);
+  animation: pp-wave 0.9s ease-in-out infinite;
+}
+.pp-speaking-wave i:nth-child(1) { height: 6px; animation-delay: 0s; }
+.pp-speaking-wave i:nth-child(2) { height: 13px; animation-delay: 0.15s; }
+.pp-speaking-wave i:nth-child(3) { height: 9px; animation-delay: 0.3s; }
+@keyframes pp-wave { 0%, 100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
+.pp-speaking-stop {
+  border: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
+  color: #fff; background: var(--pp-red); border-radius: 999px; padding: 4px 12px;
+  transition: background 0.13s;
+}
+.pp-speaking-stop:hover { background: var(--pp-red-d); }
 .pp-composer-hint { text-align: center; font-size: 11.5px; color: var(--pp-dim2); margin-top: 9px; }
